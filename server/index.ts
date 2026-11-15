@@ -6,14 +6,33 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { GameManager, ServerRoom } from './gameEngine.ts';
 import { tickBots } from './botAi.ts';
-import { getLeaderboard, getPlayerStats } from './db.ts';
+import {
+  getLeaderboard,
+  getPlayerProfile,
+  getPlayerStats,
+  getRecentMatches,
+  getSessionAccount,
+  loginUser,
+  logoutSession,
+  registerUser,
+  upsertPlayerProfile,
+} from './db.ts';
 import { DiceSkin, GameMode, RoomSettings, TradeSide } from '../shared/types.ts';
+import { TOKEN_COLORS } from '../shared/memeContent.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3001;
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
+
+function extractBearerToken(req: express.Request): string {
+  const header = req.headers.authorization || '';
+  if (header.toLowerCase().startsWith('bearer ')) {
+    return header.slice(7).trim();
+  }
+  return '';
+}
 
 const httpServer = http.createServer(app);
 httpServer.keepAliveTimeout = 65_000;
@@ -74,6 +93,109 @@ app.get('/api/leaderboard', (_req, res) => {
 
 app.get('/api/stats/:playerId', (req, res) => {
   res.json(getPlayerStats(req.params.playerId));
+});
+
+app.post('/api/auth/register', (req, res) => {
+  const { email, password, nickname, avatar, color, diceSkin, guestPlayerId } = req.body || {};
+  const result = registerUser({
+    email: String(email || ''),
+    password: String(password || ''),
+    nickname: typeof nickname === 'string' ? nickname : undefined,
+    avatar: typeof avatar === 'string' ? avatar : undefined,
+    color: typeof color === 'string' ? color : undefined,
+    diceSkin: typeof diceSkin === 'string' ? (diceSkin as DiceSkin) : undefined,
+    guestPlayerId: typeof guestPlayerId === 'string' ? guestPlayerId : undefined,
+  });
+  if (!result.ok) {
+    res.status(400).json({ ok: false, error: result.error });
+    return;
+  }
+  res.json({ ok: true, token: result.token, account: result.account });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  const result = loginUser({
+    email: String(email || ''),
+    password: String(password || ''),
+  });
+  if (!result.ok) {
+    res.status(401).json({ ok: false, error: result.error });
+    return;
+  }
+  res.json({ ok: true, token: result.token, account: result.account });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = extractBearerToken(req);
+  if (token) logoutSession(token);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const token = extractBearerToken(req);
+  const account = token ? getSessionAccount(token) : null;
+  if (!account) {
+    res.status(401).json({ ok: false, error: 'Не авторизован' });
+    return;
+  }
+  res.json({ ok: true, account });
+});
+
+app.put('/api/profile', (req, res) => {
+  const token = extractBearerToken(req);
+  const account = token ? getSessionAccount(token) : null;
+  const body = req.body || {};
+
+  const targetPlayerId = account
+    ? account.playerId
+    : typeof body.playerId === 'string'
+    ? body.playerId.trim()
+    : '';
+
+  if (!targetPlayerId || targetPlayerId.startsWith('bot_')) {
+    res.status(400).json({ ok: false, error: 'Некорректный ID игрока' });
+    return;
+  }
+
+  const existing = getPlayerProfile(targetPlayerId);
+  if (!account && existing.isRegistered) {
+    res.status(401).json({ ok: false, error: 'Для изменения зарегистрированного профиля войдите в аккаунт' });
+    return;
+  }
+
+  const rawName = typeof body.nickname === 'string' ? body.nickname : typeof body.name === 'string' ? body.name : undefined;
+  const nextNick = rawName !== undefined ? rawName.trim().slice(0, 24) || existing.nickname : existing.nickname;
+  const nextAvatar =
+    typeof body.avatar === 'string' && body.avatar.trim() ? body.avatar.trim() : existing.avatar;
+  const nextColor =
+    typeof body.color === 'string' && TOKEN_COLORS.some((c) => c.hex === body.color)
+      ? body.color
+      : existing.color;
+  const validDiceSkins: DiceSkin[] = ['classic', 'neon', 'gopnik', 'gold', 'comic'];
+  const nextDiceSkin =
+    typeof body.diceSkin === 'string' && validDiceSkins.includes(body.diceSkin as DiceSkin)
+      ? (body.diceSkin as DiceSkin)
+      : existing.diceSkin;
+
+  upsertPlayerProfile(targetPlayerId, nextNick, nextAvatar, nextColor, nextDiceSkin);
+  manager.syncPlayerProfileInLobbyRooms(targetPlayerId, {
+    name: nextNick,
+    avatar: nextAvatar,
+    color: nextColor,
+    diceSkin: nextDiceSkin,
+  });
+
+  res.json({ ok: true, profile: getPlayerProfile(targetPlayerId) });
+});
+
+app.get('/api/profile/:playerId', (req, res) => {
+  const playerId = String(req.params.playerId || '').trim();
+  res.json({
+    profile: getPlayerProfile(playerId),
+    leaderboard: getLeaderboard(10),
+    recentMatches: getRecentMatches(8),
+  });
 });
 
 io.on('connection', (socket) => {
@@ -150,7 +272,7 @@ io.on('connection', (socket) => {
         color: string;
         diceSkin: DiceSkin;
       },
-      ack?: (res: { ok: boolean; code?: string; error?: string }) => void
+      ack?: (res: { ok: boolean; code?: string; playerId?: string; error?: string }) => void
     ) => {
       const res = manager.joinRoom(
         payload.code,
@@ -169,20 +291,21 @@ io.on('connection', (socket) => {
         return;
       }
 
+      const resolvedPlayerId = res.playerId || payload.playerId;
       const prev = socketSessions.get(socket.id);
       if (prev && prev.roomCode !== res.room.state.code) {
         socket.leave(prev.roomCode);
       }
 
-      cleanupStalePlayerSessions(payload.playerId, socket.id);
+      cleanupStalePlayerSessions(resolvedPlayerId, socket.id);
       socketSessions.set(socket.id, {
         roomCode: res.room.state.code,
-        playerId: payload.playerId,
+        playerId: resolvedPlayerId,
       });
       socket.join(res.room.state.code);
       socket.emit('room:state', res.room.state);
       emitPublicRoomsIfChanged();
-      ack?.({ ok: true, code: res.room.state.code });
+      ack?.({ ok: true, code: res.room.state.code, playerId: resolvedPlayerId });
     }
   );
 
@@ -381,10 +504,33 @@ io.on('connection', (socket) => {
     }
   );
 
+  socket.on('game:trade_draft_open', () => {
+    const ctx = getCtx();
+    if (ctx) manager.extendTurnForTradeDraft(ctx.room, ctx.playerId);
+  });
+
   socket.on('game:respond_trade', (accept: boolean) => {
     const ctx = getCtx();
     if (ctx) manager.respondTrade(ctx.room, ctx.playerId, accept);
   });
+
+  socket.on(
+    'game:start_kick_vote',
+    (targetId: string, cb?: (res: { ok: boolean; error?: string }) => void) => {
+      const ctx = getCtx();
+      if (!ctx) return cb?.({ ok: false, error: 'Комната не найдена' });
+      cb?.(manager.startKickVote(ctx.room, ctx.playerId, targetId));
+    }
+  );
+
+  socket.on(
+    'game:cast_kick_vote',
+    (approve: boolean, cb?: (res: { ok: boolean; error?: string }) => void) => {
+      const ctx = getCtx();
+      if (!ctx) return cb?.({ ok: false, error: 'Комната не найдена' });
+      cb?.(manager.castKickVote(ctx.room, ctx.playerId, approve));
+    }
+  );
 
   socket.on('game:pay_debt', () => {
     const ctx = getCtx();
@@ -428,6 +574,7 @@ io.on('connection', (socket) => {
     if (pl && pl.socketId === socket.id) {
       pl.isConnected = false;
       io.to(sess.roomCode).emit('room:state', room.state);
+      emitPublicRoomsIfChanged();
     }
   });
 });

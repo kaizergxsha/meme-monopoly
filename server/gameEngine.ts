@@ -36,6 +36,7 @@ import {
   DiceSkin,
   GameLogEntry,
   GameMode,
+  KickVoteState,
   PlayerState,
   PlayerStats,
   PublicRoomSummary,
@@ -79,6 +80,7 @@ export interface ServerRoom {
   pendingChance: { card: ChanceCardDef; playerId: string } | null;
   postDebtLandingCellId: number | null;
   activeTradeMortgagedIds: Set<number> | null;
+  tradeDraftExtensionsThisTurn: number;
 }
 
 export interface RoomCallbacks {
@@ -112,6 +114,14 @@ function randDie(): number {
 function randSpeedDie(): SpeedDieFace {
   const faces: SpeedDieFace[] = [1, 2, 3, 'BUS', 'BUS', 'M1'];
   return faces[Math.floor(Math.random() * faces.length)];
+}
+
+function logAvatarBadge(avatar?: string): string {
+  const a = (avatar || '').trim();
+  if (!a || a.startsWith('data:') || a.startsWith('http') || a.length > 12) {
+    return '😎';
+  }
+  return a;
 }
 
 export class GameManager {
@@ -171,6 +181,7 @@ export class GameManager {
     for (const r of this.rooms.values()) {
       if (!r.state.settings.isPrivate && r.state.status !== 'FINISHED') {
         const host = r.state.players.find((p) => p.id === r.state.hostId);
+        const humans = r.state.players.filter((p) => !p.isBot);
         list.push({
           code: r.state.code,
           hostName: host?.name ?? 'Хост',
@@ -180,6 +191,9 @@ export class GameManager {
           status: r.state.status,
           hasPassword: Boolean(r.state.settings.password),
           censored: r.state.settings.censored,
+          playerIds: humans.map((p) => p.id),
+          playerNames: humans.map((p) => p.name),
+          hasDisconnectedHumans: humans.some((p) => !p.isConnected),
         });
       }
     }
@@ -224,7 +238,7 @@ export class GameManager {
       0,
       settings
     );
-    upsertPlayerProfile(host.id, host.name, host.avatar);
+    upsertPlayerProfile(host.id, host.name, host.avatar, host.color, host.diceSkin);
     host.stats = getPlayerStats(host.id);
 
     const state: RoomState = {
@@ -249,11 +263,13 @@ export class GameManager {
       hasExtraTurn: false,
       mortgagedThisTurn: false,
       builtGroupsThisTurn: [],
+      tradesProposedThisTurn: 0,
       lastDice: null,
       speedTargetMode: 'NONE',
       validSpeedTargets: [],
       auction: null,
       activeTrade: null,
+      activeKickVote: null,
       portal: null,
       lastJackpotResult: null,
       pendingDebt: null,
@@ -272,6 +288,7 @@ export class GameManager {
       pendingChance: null,
       postDebtLandingCellId: null,
       activeTradeMortgagedIds: null,
+      tradeDraftExtensionsThisTurn: 0,
     };
 
     this.addLog(
@@ -349,14 +366,36 @@ export class GameManager {
       diceSkin: DiceSkin;
     },
     password?: string
-  ): { ok: boolean; error?: string; room?: ServerRoom } {
+  ): { ok: boolean; error?: string; room?: ServerRoom; playerId?: string } {
     const cleanCode = code.trim().toUpperCase();
     const room = this.rooms.get(cleanCode);
     if (!room) return { ok: false, error: 'Комната не найдена' };
 
-    // Переподключение существующего игрока по стабильному playerId
-    const existing = room.state.players.find((p) => p.id === profile.playerId);
+    const normalizedName = profile.name.trim().toLowerCase();
+    // Переподключение существующего игрока: сначала по стабильному playerId, затем по нику или к отключённому слоту в активном матче
+    let existing = room.state.players.find((p) => p.id === profile.playerId);
+    if (!existing && room.state.status === 'PLAYING') {
+      if (normalizedName) {
+        existing = room.state.players.find(
+          (p) => !p.isBot && p.name.trim().toLowerCase() === normalizedName
+        );
+      }
+      if (!existing) {
+        existing = room.state.players.find((p) => !p.isBot && !p.isConnected);
+      }
+    }
+
     if (existing) {
+      if (
+        existing.id !== profile.playerId &&
+        room.state.settings.password &&
+        room.state.settings.password.trim() !== '' &&
+        room.state.settings.password !== (password || '')
+      ) {
+        return { ok: false, error: 'Неверный пароль от комнаты' };
+      }
+
+      const wasDisconnected = !existing.isConnected;
       existing.socketId = profile.socketId;
       existing.isConnected = true;
       if (room.state.status === 'LOBBY') {
@@ -369,10 +408,18 @@ export class GameManager {
             room.state.players.filter((p) => p.id !== existing.id)
           );
         }
+      } else if (wasDisconnected) {
+        const badge = logAvatarBadge(existing.avatar);
+        this.addLog(
+          room,
+          'SYSTEM',
+          `🔄 ${badge} ${existing.name} переподключился к игре!`,
+          `🔄 ${badge} ${existing.name} вернулся в игру.`
+        );
       }
       existing.stats = getPlayerStats(existing.id);
       this.emitState(room);
-      return { ok: true, room };
+      return { ok: true, room, playerId: existing.id };
     }
 
     if (room.state.status !== 'LOBBY') {
@@ -397,19 +444,20 @@ export class GameManager {
       room.state.players.length,
       room.state.settings
     );
-    upsertPlayerProfile(player.id, player.name, player.avatar);
+    upsertPlayerProfile(player.id, player.name, player.avatar, player.color, player.diceSkin);
     player.stats = getPlayerStats(player.id);
     room.state.players.push(player);
     this.recomputeTeams(room);
 
+    const badge = logAvatarBadge(player.avatar);
     this.addLog(
       room,
       'SYSTEM',
-      `${player.avatar} ${player.name} залетел в хату!`,
-      `${player.avatar} ${player.name} подключился к комнате!`
+      `${badge} ${player.name} залетел в хату!`,
+      `${badge} ${player.name} подключился к комнате!`
     );
     this.emitState(room);
-    return { ok: true, room };
+    return { ok: true, room, playerId: player.id };
   }
 
   private recomputeTeams(room: ServerRoom) {
@@ -439,8 +487,21 @@ export class GameManager {
       const taken = room.state.players.some((p) => p.id !== playerId && p.color === patch.color);
       if (!taken) player.color = patch.color;
     }
-    upsertPlayerProfile(player.id, player.name, player.avatar);
+    upsertPlayerProfile(player.id, player.name, player.avatar, player.color, player.diceSkin);
     this.emitState(room);
+  }
+
+  public syncPlayerProfileInLobbyRooms(
+    playerId: string,
+    patch: { name?: string; avatar?: string; color?: string; diceSkin?: DiceSkin }
+  ) {
+    for (const room of this.rooms.values()) {
+      if (room.state.status === 'LOBBY') {
+        if (room.state.players.some((p) => p.id === playerId)) {
+          this.updateProfileInLobby(room, playerId, patch);
+        }
+      }
+    }
   }
 
   public updateSettings(room: ServerRoom, playerId: string, patch: Partial<RoomSettings>) {
@@ -508,11 +569,12 @@ export class GameManager {
       room.state.players.length,
       room.state.settings
     );
-    upsertPlayerProfile(bot.id, bot.name, bot.avatar);
+    upsertPlayerProfile(bot.id, bot.name, bot.avatar, bot.color, bot.diceSkin);
     bot.stats = getPlayerStats(bot.id);
     room.state.players.push(bot);
     this.recomputeTeams(room);
-    this.addLog(room, 'SYSTEM', `Добавлен ${bot.avatar} ${bot.name}`, `Добавлен ${bot.avatar} ${bot.name}`);
+    const botBadge = logAvatarBadge(bot.avatar);
+    this.addLog(room, 'SYSTEM', `Добавлен ${botBadge} ${bot.name}`, `Добавлен ${botBadge} ${bot.name}`);
     this.emitState(room);
   }
 
@@ -580,6 +642,7 @@ export class GameManager {
     room.pendingChance = null;
     room.postDebtLandingCellId = null;
     room.activeTradeMortgagedIds = null;
+    room.tradeDraftExtensionsThisTurn = 0;
     room.state.cells = BOARD_CELLS.map((c) => ({
       id: c.id,
       ownerId: null,
@@ -592,11 +655,13 @@ export class GameManager {
     room.state.hasExtraTurn = false;
     room.state.mortgagedThisTurn = false;
     room.state.builtGroupsThisTurn = [];
+    room.state.tradesProposedThisTurn = 0;
     room.state.lastDice = null;
     room.state.speedTargetMode = 'NONE';
     room.state.validSpeedTargets = [];
     room.state.auction = null;
     room.state.activeTrade = null;
+    room.state.activeKickVote = null;
     room.state.portal = null;
     room.state.lastJackpotResult = null;
     room.state.pendingDebt = null;
@@ -725,6 +790,8 @@ export class GameManager {
     const player = room.state.players[idx];
     room.state.builtGroupsThisTurn = [];
     room.state.mortgagedThisTurn = false;
+    room.state.tradesProposedThisTurn = 0;
+    room.tradeDraftExtensionsThisTurn = 0;
     if (!isExtraTurn) {
       player.doublesStreak = 0;
     }
@@ -2459,6 +2526,7 @@ export class GameManager {
       principal,
       paybackAmount,
       dueRound: room.state.round + term,
+      takenAtRound: room.state.round,
     };
 
     this.addLog(
@@ -2506,6 +2574,20 @@ export class GameManager {
     return getGroupCellDefs(grp).some((d) => (room.state.cells[d.id]?.branches ?? 0) > 0);
   }
 
+  public extendTurnForTradeDraft(room: ServerRoom, playerId: string) {
+    if (room.state.status !== 'PLAYING' || room.state.activeTrade) return;
+    const cur = room.state.players[room.state.currentPlayerIndex];
+    if (!cur || cur.id !== playerId) return;
+    if ((room.state.tradesProposedThisTurn ?? 0) >= 3 || room.tradeDraftExtensionsThisTurn >= 3) {
+      return;
+    }
+    room.tradeDraftExtensionsThisTurn += 1;
+    if (room.state.turnDeadlineAt !== null && room.state.settings.turnTimerSec > 0) {
+      room.state.turnDeadlineAt += 20000;
+      this.emitState(room);
+    }
+  }
+
   public proposeTrade(
     room: ServerRoom,
     fromId: string,
@@ -2519,6 +2601,9 @@ export class GameManager {
     const cur = room.state.players[room.state.currentPlayerIndex];
     if (!cur || cur.id !== fromId) {
       return { ok: false, error: 'Отправлять договор можно только в свой ход' };
+    }
+    if ((room.state.tradesProposedThisTurn ?? 0) >= 3) {
+      return { ok: false, error: 'За ход можно предложить максимум 3 сделки' };
     }
     const fromP = room.state.players.find((p) => p.id === fromId);
     const toP = room.state.players.find((p) => p.id === toId);
@@ -2578,6 +2663,13 @@ export class GameManager {
       expiresAt: Date.now() + 35000,
     };
     room.state.activeTrade = trade;
+    room.state.tradesProposedThisTurn = (room.state.tradesProposedThisTurn ?? 0) + 1;
+    if (room.state.turnDeadlineAt !== null && room.state.settings.turnTimerSec > 0) {
+      room.state.turnDeadlineAt = Math.max(
+        room.state.turnDeadlineAt + 25000,
+        trade.expiresAt + 15000
+      );
+    }
     room.activeTradeMortgagedIds = new Set(
       [...cleanOffer.propertyIds, ...cleanReq.propertyIds].filter((cid) =>
         Boolean(room.state.cells[cid]?.isMortgaged)
@@ -2673,12 +2765,161 @@ export class GameManager {
     this.checkAndCreditMonopolies(room, fromP);
     this.checkAndCreditMonopolies(room, toP);
 
+    const offerHard = this.formatTradeSideSummary(trade.offer, false);
+    const requestHard = this.formatTradeSideSummary(trade.request, false);
+    const offerClean = this.formatTradeSideSummary(trade.offer, true);
+    const requestClean = this.formatTradeSideSummary(trade.request, true);
+
     this.addLog(
       room,
       'TRADE',
-      `🤝 По рукам! ${fromP.name} и ${toP.name} ударили по рукам и провернули сделку!`,
-      `🤝 Сделка заключена! ${fromP.name} и ${toP.name} пожали руки!`
+      `🤝 По рукам! ${fromP.name} отдал [${offerHard}] ⇄ ${toP.name} отдал [${requestHard}].`,
+      `🤝 Сделка! ${fromP.name} отдал [${offerClean}] ⇄ ${toP.name} отдал [${requestClean}].`
     );
+    this.emitState(room);
+  }
+
+  private formatTradeSideSummary(side: TradeSide, clean = false): string {
+    const parts: string[] = [];
+    if (side.propertyIds.length > 0) {
+      const propNames = side.propertyIds.map((cid) => {
+        const def = BOARD_CELLS[cid];
+        const label = clean ? def?.cleanName || def?.name : def?.name;
+        return label || `#${cid}`;
+      });
+      parts.push(propNames.join(', '));
+    }
+    if (side.cash > 0) {
+      parts.push(formatMoney(side.cash));
+    }
+    if (side.shields > 0) {
+      parts.push(`🛡️×${side.shields}`);
+    }
+    return parts.length > 0 ? parts.join(' + ') : 'ничего';
+  }
+
+  // ================== ГОЛОСОВАНИЕ ЗА КИК ==================
+
+  public startKickVote(
+    room: ServerRoom,
+    initiatorId: string,
+    targetId: string
+  ): { ok: boolean; error?: string } {
+    if (room.state.status !== 'PLAYING') {
+      return { ok: false, error: 'Голосование доступно только во время игры' };
+    }
+    if (room.state.activeKickVote) {
+      return { ok: false, error: 'Уже идёт другое голосование за кик' };
+    }
+    const initiator = room.state.players.find((p) => p.id === initiatorId);
+    const target = room.state.players.find((p) => p.id === targetId);
+    if (!initiator || initiator.isBankrupt || !target || target.isBankrupt || initiatorId === targetId) {
+      return { ok: false, error: 'Некорректная цель для кика' };
+    }
+
+    const eligible = room.state.players.filter((p) => !p.isBankrupt && p.id !== targetId);
+    if (eligible.length < 2) {
+      return { ok: false, error: 'Голосование за кик доступно при 3 и более активных игроках' };
+    }
+
+    const vote: KickVoteState = {
+      initiatorId,
+      targetId,
+      votes: { [initiatorId]: true },
+      eligibleVoterIds: eligible.map((p) => p.id),
+      expiresAt: Date.now() + 30_000,
+    };
+    room.state.activeKickVote = vote;
+
+    const targetBadge = logAvatarBadge(target.avatar);
+    this.addLog(
+      room,
+      'SYSTEM',
+      `🗳️ ${initiator.name} запустил голосование за кик ${targetBadge} ${target.name} (${target.name} не голосует)!`,
+      `🗳️ Запущено голосование за кик ${targetBadge} ${target.name}.`
+    );
+    this.emitState(room);
+    return { ok: true };
+  }
+
+  public castKickVote(
+    room: ServerRoom,
+    playerId: string,
+    approve: boolean
+  ): { ok: boolean; error?: string } {
+    const vote = room.state.activeKickVote;
+    if (!vote || room.state.status !== 'PLAYING') {
+      return { ok: false, error: 'Нет активного голосования' };
+    }
+    if (playerId === vote.targetId || !vote.eligibleVoterIds.includes(playerId)) {
+      return { ok: false, error: 'Игрок, против которого идёт голосование, не может голосовать' };
+    }
+
+    vote.votes[playerId] = Boolean(approve);
+    this.evaluateKickVoteProgress(room);
+    return { ok: true };
+  }
+
+  private evaluateKickVoteProgress(room: ServerRoom) {
+    const vote = room.state.activeKickVote;
+    if (!vote) return;
+    const totalEligible = vote.eligibleVoterIds.length;
+    if (totalEligible < 2) {
+      this.resolveKickVote(room, false, 'недостаточно голосующих');
+      return;
+    }
+
+    const neededYes = Math.floor(totalEligible / 2) + 1;
+    let yesCount = 0;
+    let noCount = 0;
+    for (const vid of vote.eligibleVoterIds) {
+      if (vote.votes[vid] === true) yesCount++;
+      else if (vote.votes[vid] === false) noCount++;
+    }
+
+    if (yesCount >= neededYes) {
+      this.resolveKickVote(room, true, `${yesCount}/${totalEligible}`);
+      return;
+    }
+
+    const maxPossibleYes = totalEligible - noCount;
+    if (maxPossibleYes < neededYes || yesCount + noCount >= totalEligible) {
+      this.resolveKickVote(room, false, `${yesCount}/${totalEligible}`);
+      return;
+    }
+
+    this.emitState(room);
+  }
+
+  private resolveKickVote(room: ServerRoom, passed: boolean, details: string) {
+    const vote = room.state.activeKickVote;
+    if (!vote) return;
+    room.state.activeKickVote = null;
+
+    const target = room.state.players.find((p) => p.id === vote.targetId);
+    if (passed && target && !target.isBankrupt) {
+      const targetBadge = logAvatarBadge(target.avatar);
+      this.addLog(
+        room,
+        'SYSTEM',
+        `👢 Голосование принято (${details}): ${targetBadge} ${target.name} отправляется на завод!`,
+        `👢 Голосование принято (${details}): ${targetBadge} ${target.name} кикнут из матча.`
+      );
+      this.executeBankruptcy(
+        room,
+        target,
+        'BANK',
+        'Кикнут голосованием большинства игроков',
+        'Исключён голосованием игроков'
+      );
+    } else {
+      this.addLog(
+        room,
+        'SYSTEM',
+        `🙅 Голосование за кик ${target?.name ?? 'игрока'} провалилось (${details}).`,
+        `🙅 Кик ${target?.name ?? 'игрока'} отклонён (${details}).`
+      );
+    }
     this.emitState(room);
   }
 
@@ -2782,6 +3023,16 @@ export class GameManager {
       room.state.activeTrade = null;
       room.activeTradeMortgagedIds = null;
     }
+    if (room.state.activeKickVote) {
+      if (room.state.activeKickVote.targetId === loser.id) {
+        room.state.activeKickVote = null;
+      } else {
+        room.state.activeKickVote.eligibleVoterIds = room.state.activeKickVote.eligibleVoterIds.filter(
+          (id) => id !== loser.id
+        );
+        delete room.state.activeKickVote.votes[loser.id];
+      }
+    }
 
     const styles: ('eralash' | 'curb' | 'wasted')[] = ['wasted', 'curb', 'eralash'];
     const style = styles[room.bankruptcyStyleCounter % styles.length];
@@ -2802,13 +3053,14 @@ export class GameManager {
       timestamp: Date.now(),
     });
 
+    const loserBadge = logAvatarBadge(loser.avatar);
     this.addLog(
       room,
       'BANKRUPT',
-      `💀 ПОТРАЧЕНО! ${loser.avatar} ${loser.name} обанкротился (${reason})! Активы перешли: ${
+      `💀 ПОТРАЧЕНО! ${loserBadge} ${loser.name} обанкротился (${reason})! Активы перешли: ${
         creditor ? creditor.name : 'Банку'
       }.`,
-      `💀 Банкротство! ${loser.avatar} ${loser.name} выбывает из игры (${cleanReason}).`,
+      `💀 Банкротство! ${loserBadge} ${loser.name} выбывает из игры (${cleanReason}).`,
       loser
     );
 
@@ -2850,7 +3102,7 @@ export class GameManager {
 
     const winnerNames = room.state.players
       .filter((p) => winnerIds.includes(p.id))
-      .map((p) => `${p.avatar} ${p.name}`)
+      .map((p) => `${logAvatarBadge(p.avatar)} ${p.name}`)
       .join(' & ');
 
     this.addLog(
@@ -2944,6 +3196,12 @@ export class GameManager {
         this.emitState(room);
       }
 
+      // Истечение таймера голосования за кик
+      if (room.state.activeKickVote && now >= room.state.activeKickVote.expiresAt) {
+        this.resolveKickVote(room, false, 'время вышло');
+        continue;
+      }
+
       // Авто-подтверждение карточки Шанса по истечении дедлайна (чтобы игра не зависла)
       if (
         room.state.phase === 'CHANCE' &&
@@ -2964,8 +3222,9 @@ export class GameManager {
         continue;
       }
 
-      // Таймер хода активного игрока
+      // Таймер хода активного игрока (не истекает, пока висит открытое предложение сделки)
       if (
+        !room.state.activeTrade &&
         room.state.phase !== 'AUCTION' &&
         room.state.phase !== 'GAME_OVER' &&
         room.state.turnDeadlineAt &&

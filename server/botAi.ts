@@ -10,8 +10,26 @@ import {
 import { GameManager, ServerRoom } from './gameEngine.ts';
 
 export function tickBots(manager: GameManager) {
+  const now = Date.now();
   for (const room of manager.rooms.values()) {
     if (room.state.status !== 'PLAYING') continue;
+
+    // 0. Боты участвуют в голосовании за кик (через ~2 сек после старта голосования)
+    if (room.state.activeKickVote) {
+      const vote = room.state.activeKickVote;
+      const elapsedMs = 30_000 - (vote.expiresAt - now);
+      if (elapsedMs >= 1800) {
+        const target = room.state.players.find((p) => p.id === vote.targetId);
+        for (const vid of [...vote.eligibleVoterIds]) {
+          if (vote.votes[vid] !== undefined) continue;
+          const bot = room.state.players.find((p) => p.id === vid && p.isBot && !p.isBankrupt);
+          if (!bot) continue;
+          const approve = !target?.isConnected || Boolean(target?.isBot);
+          manager.castKickVote(room, bot.id, approve);
+          if (!room.state.activeKickVote) break;
+        }
+      }
+    }
 
     // 1. Боты отвечают на входящие сделки
     if (room.state.activeTrade) {
