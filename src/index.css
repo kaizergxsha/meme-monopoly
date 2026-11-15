@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+:root {
+  --bg-canvas: #08090c;
+  --bg-cell: #13161f;
+  --bg-cell-hover: #1a1e2b;
+  --border-cell: #222736;
+  --bg-onyx-deep: #0f1117;
+  --bg-onyx-raised: #161922;
+  --accent-emerald-from: #10b981;
+  --accent-emerald-to: #059669;
+  --accent-gold: #e5b869;
+  --accent-carmine: #f43f5e;
+  --font-display: 'Unbounded', system-ui, sans-serif;
+  --font-sans: 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 @layer base {
   html,
   body,
@@ -7,11 +23,25 @@
     height: 100dvh;
     width: 100vw;
     overflow: hidden;
-    background-color: #17181c;
-    color: #f5f5f5;
-    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--bg-canvas);
+    color: #f1f5f9;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.font-mono-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.bg-svg-noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* Тонкие кастомные скроллбары в стиле Monopoly One */
@@ -228,22 +258,300 @@
   animation: curbScroll 3.8s ease-out forwards;
 }
 
+@keyframes boardShakeImpact {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-3px, 2px, 0) rotate(-0.3deg);
+  }
+  40% {
+    transform: translate3d(3px, -2px, 0) rotate(0.3deg);
+  }
+  65% {
+    transform: translate3d(-2px, 1px, 0) rotate(-0.15deg);
+  }
+  85% {
+    transform: translate3d(1px, -1px, 0);
+  }
+}
+
+.animate-board-shake {
+  animation: boardShakeImpact 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes diceTumbleAnim {
+  0% {
+    transform: scale(0.86) rotate(-14deg);
+  }
+  45% {
+    transform: scale(1.16) rotate(10deg);
+  }
+  75% {
+    transform: scale(0.95) rotate(-5deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.animate-dice-tumble {
+  animation: diceTumbleAnim 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cashFlyBurst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 6px) scale(0.75);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -10px) scale(1.12);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(-50%, -26px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -44px) scale(0.9);
+  }
+}
+
+.animate-cash-fly {
+  animation: cashFlyBurst 1.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes policeSirenFlash {
+  0%, 100% {
+    box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.25), 0 0 18px rgba(59, 130, 246, 0.2);
+  }
+  25% {
+    box-shadow: inset 0 0 0 3px rgba(239, 68, 68, 0.85), 0 0 38px rgba(239, 68, 68, 0.6);
+  }
+  50% {
+    box-shadow: inset 0 0 0 3px rgba(59, 130, 246, 0.85), 0 0 38px rgba(59, 130, 246, 0.6);
+  }
+  75% {
+    box-shadow: inset 0 0 0 3px rgba(239, 68, 68, 0.85), 0 0 32px rgba(239, 68, 68, 0.55);
+  }
+}
+
+.animate-police-flash {
+  animation: policeSirenFlash 1.4s ease-in-out 2;
+}
+
+@keyframes popBuildIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.45) translateY(4px);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.18) translateY(-1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-pop-in {
+  animation: popBuildIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.glass-panel {
+  background: linear-gradient(165deg, #161922 0%, #0f1117 100%);
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 24px 60px -12px rgba(0, 0, 0, 0.85);
+}
+
+.glass-card-inner {
+  background: linear-gradient(165deg, rgba(22, 25, 34, 0.92) 0%, rgba(12, 14, 20, 0.92) 100%);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+/* Дорогая тактильная 3D-кнопка главного действия (Изумруд) */
+.btn-emerald-3d {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+  border-top: 1px solid rgba(110, 231, 183, 0.55);
+  border-left: 1px solid rgba(110, 231, 183, 0.22);
+  border-right: 1px solid rgba(110, 231, 183, 0.22);
+  border-bottom: 1px solid #047857;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    0 4px 0 #065f46,
+    0 10px 25px rgba(16, 185, 129, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1), filter 0.16s ease, box-shadow 0.12s ease;
+}
+
+.btn-emerald-3d::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0 0 52% 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.btn-emerald-3d:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow:
+    0 4px 0 #065f46,
+    0 14px 30px rgba(16, 185, 129, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.btn-emerald-3d:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 #065f46,
+    0 4px 12px rgba(16, 185, 129, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.btn-emerald-3d:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: 0 2px 0 #064e3b;
+}
+
+/* Шампань-золотая хайроллер-кнопка */
+.btn-gold-3d {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f3d082 0%, #c8963e 100%);
+  border-top: 1px solid rgba(254, 243, 199, 0.7);
+  color: #140f06;
+  box-shadow:
+    0 3px 0 #785318,
+    0 8px 22px rgba(229, 184, 105, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transition: transform 0.12s ease, filter 0.16s ease, box-shadow 0.12s ease;
+}
+
+.btn-gold-3d:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+
+.btn-gold-3d:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #785318, 0 4px 10px rgba(229, 184, 105, 0.2);
+}
+
+/* Тактильная покерная фишка / токен смарт-контракта */
+.poker-chip-btn {
+  position: relative;
+  background: radial-gradient(circle at 50% 25%, #232838 0%, #12151f 100%);
+  border: 1px dashed rgba(229, 184, 105, 0.42);
+  box-shadow:
+    0 2px 0 #07080c,
+    0 4px 10px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: transform 0.1s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.poker-chip-btn:hover:not(:disabled) {
+  border-color: rgba(229, 184, 105, 0.85);
+  background: radial-gradient(circle at 50% 25%, #2c3347 0%, #171b28 100%);
+}
+
+.poker-chip-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 #07080c, inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* DJ / StreamDeck физический пэд саундпада */
+.streamdeck-pad {
+  position: relative;
+  background: linear-gradient(180deg, #171b26 0%, #10131b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 3px 0 #07080c,
+    0 6px 14px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.1s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.streamdeck-pad:hover:not(:disabled) {
+  background: linear-gradient(180deg, #1d2230 0%, #141824 100%);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.streamdeck-pad:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 0 #07080c,
+    inset 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+@keyframes eqBarBounce {
+  0%, 100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-eq-1 {
+  animation: eqBarBounce 0.48s ease-in-out infinite;
+}
+.animate-eq-2 {
+  animation: eqBarBounce 0.36s ease-in-out 0.12s infinite;
+}
+.animate-eq-3 {
+  animation: eqBarBounce 0.52s ease-in-out 0.22s infinite;
+}
+
+@keyframes soundpadGlowPulse {
+  0%, 100% {
+    box-shadow: 0 3px 0 #07080c, 0 0 14px rgba(229, 184, 105, 0.35), inset 0 0 12px rgba(229, 184, 105, 0.18);
+  }
+  50% {
+    box-shadow: 0 3px 0 #07080c, 0 0 24px rgba(229, 184, 105, 0.7), inset 0 0 18px rgba(229, 184, 105, 0.32);
+  }
+}
+
+.animate-pad-playing {
+  animation: soundpadGlowPulse 0.75s ease-in-out infinite;
+}
+
+/* Контейнер доски: container-type: size только на мобильных/планшетах (<1024px), на десктопе — плотный кокпит */
+@media (max-width: 1023px) {
+  .board-outer-box {
+    container-type: size;
+  }
+}
+
 /* Адаптивный квадратный размер доски с местом под внешние плашки цен */
 .board-square-wrap {
-  width: min(calc(100cqw - 56px), calc(100cqh - 36px), 1080px);
-  height: min(calc(100cqw - 56px), calc(100cqh - 36px), 1080px);
+  width: min(calc(100cqw - 60px), calc(100cqh - 38px), 1080px);
+  height: min(calc(100cqw - 60px), calc(100cqh - 38px), 1080px);
 }
 
 @media (min-width: 640px) {
   .board-square-wrap {
-    width: min(calc(100cqw - 96px), calc(100cqh - 48px), 1080px);
-    height: min(calc(100cqw - 96px), calc(100cqh - 48px), 1080px);
+    width: min(calc(100cqw - 104px), calc(100cqh - 52px), 1080px);
+    height: min(calc(100cqw - 104px), calc(100cqh - 52px), 1080px);
   }
 }
 
 @media (min-width: 1024px) {
   .board-square-wrap {
-    width: min(calc(100cqw - 108px), calc(100cqh - 54px), 1080px);
-    height: min(calc(100cqw - 108px), calc(100cqh - 54px), 1080px);
+    width: min(calc(100vw - 416px), calc(100dvh - 54px), 1060px);
+    height: min(calc(100vw - 416px), calc(100dvh - 54px), 1060px);
   }
 }
