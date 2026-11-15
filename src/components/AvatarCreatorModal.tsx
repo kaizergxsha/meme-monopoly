@@ -170,7 +170,7 @@ export const AvatarCreatorModal: React.FC<AvatarCreatorModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg max-h-[92dvh] overflow-y-auto rounded-2xl bg-[#141724] border border-white/15 shadow-[0_24px_80px_rgba(0,0,0,0.8)] p-4 sm:p-5 space-y-4 text-slate-100"
+        className="w-full max-w-lg max-h-[92dvh] overflow-y-auto rounded-2xl bg-[#141724]/86 backdrop-blur-2xl border border-white/20 shadow-[0_24px_80px_rgba(0,0,0,0.8)] p-4 sm:p-5 space-y-4 text-slate-100"
       >
         <div className="flex items-center justify-between border-b border-white/10 pb-3">
           <div>

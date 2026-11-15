@@ -93,58 +93,78 @@ export const Modals: React.FC<ModalsProps> = ({
         const isMyChance = popup.playerId === myPlayerId;
         const toneBoxClass =
           popup.tone === 'good'
-            ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
+            ? 'bg-[#10B981]/15 border-[#10B981]/45 text-emerald-100'
             : popup.tone === 'bad'
-            ? 'bg-rose-50 border-rose-400 text-rose-950'
+            ? 'bg-[#F43F5E]/15 border-[#F43F5E]/45 text-rose-100'
             : popup.tone === 'move'
-            ? 'bg-gradient-to-r from-indigo-50 to-amber-50 border-indigo-400 text-indigo-950'
-            : 'bg-purple-50 border-purple-400 text-purple-950';
+            ? 'bg-gradient-to-r from-[#E5B869]/18 to-[#10B981]/12 border-[#E5B869]/45 text-[#F3D082]'
+            : 'bg-purple-500/16 border-purple-400/45 text-purple-100';
         const toneBadgeClass =
           popup.tone === 'good'
-            ? 'text-emerald-700'
+            ? 'text-[#6EE7B7]'
             : popup.tone === 'bad'
-            ? 'text-rose-700'
+            ? 'text-[#FDA4AF]'
             : popup.tone === 'move'
-            ? 'text-indigo-700'
-            : 'text-purple-700';
+            ? 'text-[#E5B869]'
+            : 'text-purple-300';
+        const specialMechanicBadge =
+          popup.card.kind === 'EXTRA_TURN'
+            ? '⚡ ДОП. ХОД'
+            : popup.card.kind === 'FREE_PORTAL'
+            ? '🚅 ПОРТАЛ'
+            : popup.card.kind === 'BRANCH_BONUS'
+            ? '🏗️ КЭШБЭК ФИЛИАЛОВ'
+            : popup.card.kind === 'STEAL_LEADER'
+            ? '🦝 РЭКЕТ ЛИДЕРА'
+            : popup.card.kind === 'PAY_ALL'
+            ? '💸 ВСЕМ ПО КЕШУ'
+            : null;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none p-3 sm:p-4">
             <div
               data-testid="chance-card-popup"
-              className="w-full max-w-[380px] max-h-[88dvh] overflow-y-auto pointer-events-auto animate-action-card rounded-2xl bg-white text-neutral-900 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.85)] border-2 border-neutral-200 space-y-3"
+              className="glass-panel w-full max-w-[396px] max-h-[88dvh] overflow-y-auto pointer-events-auto animate-action-card rounded-2xl text-[#F1F5F9] p-4 shadow-[0_28px_80px_rgba(0,0,0,0.92)] !border-[#E5B869]/35 space-y-3"
             >
-              {/* Чёткая шапка карточки */}
+              {/* Шапка VIP-карточки Шанса */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-neutral-900 text-amber-300 text-[10.5px] font-black uppercase tracking-wider">
-                    🃏 КАРТОЧКА «ШАНС»
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#10B981]/14 border border-[#E5B869]/45 text-[#F3D082] font-display text-[10px] font-bold uppercase tracking-wider">
+                      🃏 VIP-ЛУТБОКС «ШАНС»
+                    </span>
+                    {specialMechanicBadge && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[#E5B869]/18 border border-[#E5B869]/40 text-[#F3D082] text-[9.5px] font-mono-num font-extrabold">
+                        {specialMechanicBadge}
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => setDismissedCardTs(popup.timestamp)}
                     title="Закрыть плашку"
-                    className="w-7 h-7 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-600 hover:text-neutral-900 text-xs font-black flex items-center justify-center cursor-pointer shrink-0 transition"
+                    className="w-7 h-7 rounded-full bg-white/[0.06] hover:bg-[#F43F5E]/25 border border-white/10 hover:border-[#F43F5E]/50 text-neutral-300 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer shrink-0 transition"
                   >
                     ✕
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-neutral-700 bg-neutral-50 border border-neutral-200/80 rounded-xl px-2.5 py-1.5">
+                <div className="flex items-center gap-2 text-xs text-neutral-200 bg-[#0B0D14]/85 border border-white/[0.08] rounded-xl px-2.5 py-1.5">
                   <span
                     style={{
                       borderColor: lp?.color || '#52525b',
-                      backgroundColor: `${lp?.color || '#52525b'}22`,
+                      backgroundColor: `${lp?.color || '#52525b'}28`,
+                      boxShadow: lp?.color ? `0 0 10px ${lp.color}55` : undefined,
                     }}
                     className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-sm shrink-0 overflow-hidden"
                   >
                     <PlayerAvatar avatar={lp?.avatar || '🎲'} fill />
                   </span>
                   <span className="min-w-0 truncate font-semibold">
-                    <span style={{ color: lp?.color || '#18181b' }} className="font-black">
+                    <span style={{ color: lp?.color || '#ffffff' }} className="font-extrabold">
                       {lp?.name || 'Игрок'}
                     </span>{' '}
-                    наступил на Шанс!
+                    открыл слот Шанса
                   </span>
                 </div>
               </div>
@@ -153,25 +173,25 @@ export const Modals: React.FC<ModalsProps> = ({
 
               {/* Крупная иконка + Заголовок и описание */}
               <div className="flex items-start gap-2.5">
-                <div className="w-11 h-11 rounded-xl bg-neutral-100 border border-neutral-200 flex items-center justify-center text-2xl shrink-0 shadow-2xs">
+                <div className="w-11 h-11 rounded-xl bg-[#0B0D14] border border-[#E5B869]/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">
                   {popup.card.icon}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h4 className="font-black text-[15px] text-neutral-950 leading-tight">
+                  <h4 className="font-display font-extrabold text-[14px] text-[#F8FAFC] leading-tight">
                     {txt(popup.card.title, popup.card.cleanTitle, censored)}
                   </h4>
-                  <p className="text-xs text-neutral-600 mt-1 leading-snug">
+                  <p className="text-xs text-neutral-300 mt-1 leading-snug">
                     {txt(popup.card.description, popup.card.cleanDescription, censored)}
                   </p>
                 </div>
               </div>
 
-              {/* Яркий блок «ЧТО ВЫПАЛО:» */}
-              <div className={`rounded-xl border-2 px-3 py-2.5 shadow-2xs ${toneBoxClass}`}>
-                <div className={`text-[10px] font-black uppercase tracking-wider ${toneBadgeClass}`}>
-                  ЧТО ВЫПАЛО:
+              {/* Блок результата */}
+              <div className={`rounded-xl border px-3 py-2.5 backdrop-blur-md shadow-xs ${toneBoxClass}`}>
+                <div className={`text-[9.5px] font-mono-num font-extrabold uppercase tracking-wider ${toneBadgeClass}`}>
+                  ВЕРДИКТ ТЕРМИНАЛА:
                 </div>
-                <div className="text-sm sm:text-[15px] font-black leading-snug mt-0.5">
+                <div className="text-sm sm:text-[14.5px] font-mono-num font-extrabold leading-snug mt-0.5 text-[#F8FAFC]">
                   {txt(popup.effectLabel, popup.cleanEffectLabel, censored)}
                 </div>
               </div>
@@ -186,19 +206,19 @@ export const Modals: React.FC<ModalsProps> = ({
                       setDismissedCardTs(popup.timestamp);
                       onAckChance();
                     }}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#8fce00] hover:bg-[#7fb800] text-neutral-950 font-black text-sm tracking-wide shadow-[0_6px_20px_rgba(143,206,0,0.4)] transition cursor-pointer"
+                    className="btn-emerald-3d active:translate-y-1 w-full py-2.5 px-4 rounded-xl font-display font-bold text-xs sm:text-sm tracking-wide cursor-pointer"
                   >
                     Понял, применить!
                   </button>
                 ) : (
                   <div className="flex items-center justify-between gap-2 pt-0.5">
-                    <span className="text-xs font-semibold text-neutral-500">
-                      ⏳ Игрок читает карточку...
+                    <span className="text-xs font-semibold text-neutral-400">
+                      ⏳ Игрок изучает инсайд...
                     </span>
                     <button
                       type="button"
                       onClick={() => setDismissedCardTs(popup.timestamp)}
-                      className="px-3 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold cursor-pointer transition shrink-0"
+                      className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.15] border border-white/10 text-neutral-200 text-xs font-bold cursor-pointer transition shrink-0"
                     >
                       Скрыть
                     </button>
@@ -206,13 +226,13 @@ export const Modals: React.FC<ModalsProps> = ({
                 )
               ) : (
                 <div className="flex items-center justify-between gap-2 pt-0.5">
-                  <span className="text-xs font-bold text-emerald-700">
+                  <span className="text-xs font-bold text-[#6EE7B7]">
                     ✅ Эффект карточки применён
                   </span>
                   <button
                     type="button"
                     onClick={() => setDismissedCardTs(popup.timestamp)}
-                    className="px-3 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold cursor-pointer transition shrink-0"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.15] border border-white/10 text-neutral-200 text-xs font-bold cursor-pointer transition shrink-0"
                   >
                     Скрыть
                   </button>
@@ -223,9 +243,7 @@ export const Modals: React.FC<ModalsProps> = ({
         );
       })()}
 
-      {/* Аукцион, Портал, Казино и Входящая сделка теперь отображаются прямо внутри верхней карточки 9×9 без перекрытия и замыливания доски! */}
-
-      {/* 3. ВИЗУАЛЬНЫЙ ОТЧЁТ ПО БАНКОВСКОМУ КРЕДИТУ */}
+      {/* 2. VIP-ЛИМИТ И ВИЗУАЛЬНЫЙ ОТЧЁТ ПО КРЕДИТУ БАНКА */}
       {creditModalOpen && me && (() => {
         const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
         const unlockRound = isSpeedRulesMode(roomState.settings) ? 10 : 3;
@@ -242,24 +260,27 @@ export const Modals: React.FC<ModalsProps> = ({
           cooldownLeft === 0;
 
         return (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
             <div
               data-testid="credit-visual-report"
-              className="w-full max-w-md bg-[#171923] border border-amber-400/60 rounded-2xl p-5 shadow-2xl space-y-4 text-slate-100"
+              className="glass-panel w-full max-w-md !border-[#E5B869]/45 rounded-2xl p-5 shadow-[0_32px_90px_rgba(0,0,0,0.92)] space-y-4 text-[#F1F5F9]"
             >
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                 <div>
-                  <h3 className="text-base font-black text-amber-300 flex items-center gap-2">
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#10B981]/15 border border-[#10B981]/35 text-[#6EE7B7] font-mono-num text-[9px] font-bold uppercase tracking-wider mb-1">
+                    VIP Private Banking
+                  </div>
+                  <h3 className="text-[15px] font-display font-extrabold text-[#F3D082] flex items-center gap-2">
                     <span>🏦</span>
-                    <span>Визуальный отчёт по кредиту</span>
+                    <span>Кредитный лимит банка</span>
                   </h3>
-                  <div className="text-[11px] text-slate-400">
-                    Текущий раунд: <b className="text-slate-200">{roomState.round}</b> · Ставка: +20%
+                  <div className="text-[11px] text-neutral-400 font-mono-num mt-0.5">
+                    Раунд: <b className="text-[#F8FAFC]">{roomState.round}</b> · Ставка линии: <b className="text-[#E5B869]">+20%</b>
                   </div>
                 </div>
                 <button
                   onClick={onCloseCreditModal}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold cursor-pointer"
+                  className="w-8 h-8 rounded-xl bg-white/[0.06] hover:bg-[#F43F5E]/25 border border-white/10 hover:border-[#F43F5E]/50 text-neutral-300 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer transition"
                 >
                   ✕
                 </button>
@@ -280,81 +301,81 @@ export const Modals: React.FC<ModalsProps> = ({
 
                 return (
                   <div className="space-y-3">
-                    {/* 3 KPI-карточки */}
+                    {/* 3 KPI-карточки в стиле банковского терминала */}
                     <div className="grid grid-cols-3 gap-2">
-                      <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-center">
-                        <div className="text-[10px] text-slate-400 uppercase font-bold">Тело займа</div>
-                        <div className="text-sm font-black text-emerald-300 tabular-nums mt-0.5">
+                      <div className="rounded-xl bg-[#0B0D14] border border-white/[0.08] p-2.5 text-center">
+                        <div className="text-[9.5px] text-neutral-400 uppercase font-bold">Тело займа</div>
+                        <div className="text-sm font-mono-num font-extrabold text-[#6EE7B7] mt-0.5">
                           {formatMoney(me.credit.principal)}
                         </div>
                       </div>
-                      <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-center">
-                        <div className="text-[10px] text-slate-400 uppercase font-bold">Процент</div>
-                        <div className="text-sm font-black text-amber-300 tabular-nums mt-0.5">
+                      <div className="rounded-xl bg-[#0B0D14] border border-white/[0.08] p-2.5 text-center">
+                        <div className="text-[9.5px] text-neutral-400 uppercase font-bold">Процент</div>
+                        <div className="text-sm font-mono-num font-extrabold text-[#E5B869] mt-0.5">
                           +{formatMoney(me.credit.paybackAmount - me.credit.principal)}
                         </div>
                       </div>
-                      <div className="rounded-xl bg-rose-500/10 border border-rose-400/35 p-2.5 text-center">
-                        <div className="text-[10px] text-rose-200 uppercase font-bold">К возврату</div>
-                        <div className="text-sm font-black text-rose-300 tabular-nums mt-0.5">
+                      <div className="rounded-xl bg-[#F43F5E]/12 border border-[#F43F5E]/35 p-2.5 text-center">
+                        <div className="text-[9.5px] text-rose-200 uppercase font-bold">К возврату</div>
+                        <div className="text-sm font-mono-num font-extrabold text-[#FDA4AF] mt-0.5">
                           {formatMoney(me.credit.paybackAmount)}
                         </div>
                       </div>
                     </div>
 
                     {/* Шкала срока и дедлайна */}
-                    <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-2">
+                    <div className="glass-card-inner rounded-xl p-3 space-y-2">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-300">
+                        <span className="font-bold text-neutral-300 font-mono-num">
                           ⏳ Срок ({takenAt}р → {me.credit.dueRound}р)
                         </span>
                         <span
-                          className={`font-black px-2 py-0.5 rounded-full text-[10px] ${
+                          className={`font-mono-num font-extrabold px-2 py-0.5 rounded-full text-[10px] ${
                             urgent
-                              ? 'bg-rose-500/25 text-rose-300'
-                              : 'bg-amber-500/20 text-amber-300'
+                              ? 'bg-[#F43F5E]/25 text-rose-200'
+                              : 'bg-[#E5B869]/20 text-[#F3D082]'
                           }`}
                         >
                           Осталось {roundsLeft} р.
                         </span>
                       </div>
-                      <div className="h-2.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-2 w-full rounded-full bg-[#08090E] border border-white/[0.05] overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
                             urgent
-                              ? 'bg-gradient-to-r from-orange-500 to-rose-500'
-                              : 'bg-gradient-to-r from-emerald-400 to-amber-400'
+                              ? 'bg-gradient-to-r from-amber-500 to-[#F43F5E]'
+                              : 'bg-gradient-to-r from-[#10B981] to-[#E5B869]'
                           }`}
                           style={{ width: `${termPct}%` }}
                         />
                       </div>
-                      <div className="flex justify-between text-[10px] text-slate-400">
+                      <div className="flex justify-between text-[10px] text-neutral-400 font-mono-num">
                         <span>Прошло: {elapsed} / {totalRounds} р.</span>
                         <span>Дедлайн: {me.credit.dueRound}-й раунд</span>
                       </div>
                     </div>
 
                     {/* Шкала готовности наличных к погашению */}
-                    <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-2">
+                    <div className="glass-card-inner rounded-xl p-3 space-y-2">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-300">💵 Покрытие наличкой</span>
+                        <span className="font-bold text-neutral-300">💵 Покрытие наличкой</span>
                         <span
-                          className={`font-black text-[11px] ${
-                            missingCash === 0 ? 'text-emerald-400' : 'text-amber-300'
+                          className={`font-mono-num font-extrabold text-[11px] ${
+                            missingCash === 0 ? 'text-[#6EE7B7]' : 'text-[#E5B869]'
                           }`}
                         >
-                          {missingCash === 0 ? 'Хватает на закрытие ✓' : `Не хватает ${formatMoney(missingCash)}`}
+                          {missingCash === 0 ? 'Готово к закрытию ✓' : `Дефицит ${formatMoney(missingCash)}`}
                         </span>
                       </div>
-                      <div className="h-2.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-2 w-full rounded-full bg-[#08090E] border border-white/[0.05] overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
-                            missingCash === 0 ? 'bg-emerald-400' : 'bg-sky-400'
+                            missingCash === 0 ? 'bg-[#10B981]' : 'bg-[#E5B869]'
                           }`}
                           style={{ width: `${cashPct}%` }}
                         />
                       </div>
-                      <div className="flex justify-between text-[10px] text-slate-400 tabular-nums">
+                      <div className="flex justify-between text-[10px] text-neutral-400 font-mono-num">
                         <span>Баланс: {formatMoney(me.cash)}</span>
                         <span>{cashPct}% от долга</span>
                       </div>
@@ -366,7 +387,7 @@ export const Modals: React.FC<ModalsProps> = ({
                         onRepayCredit();
                         onCloseCreditModal();
                       }}
-                      className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-black text-xs cursor-pointer transition"
+                      className="btn-emerald-3d active:translate-y-1 w-full py-2.5 rounded-xl font-display font-bold text-xs cursor-pointer"
                     >
                       {retroLocked
                         ? 'В Ретро-режиме досрочное погашение недоступно'
@@ -375,47 +396,47 @@ export const Modals: React.FC<ModalsProps> = ({
                   </div>
                 );
               })() : (
-                <div className="space-y-3 text-xs text-slate-300">
+                <div className="space-y-3 text-xs text-neutral-300">
                   <div className="grid grid-cols-3 gap-2">
-                    <div className="rounded-xl bg-emerald-500/10 border border-emerald-400/30 p-2.5 text-center">
-                      <div className="text-[10px] text-emerald-200 uppercase font-bold">На руки</div>
-                      <div className="text-sm font-black text-emerald-300 mt-0.5">+$5 000</div>
+                    <div className="rounded-xl bg-[#10B981]/12 border border-[#10B981]/35 p-2.5 text-center">
+                      <div className="text-[9.5px] text-emerald-200 uppercase font-bold">Лимит</div>
+                      <div className="text-sm font-mono-num font-extrabold text-[#6EE7B7] mt-0.5">+$5 000</div>
                     </div>
-                    <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-center">
-                      <div className="text-[10px] text-slate-400 uppercase font-bold">Переплата</div>
-                      <div className="text-sm font-black text-amber-300 mt-0.5">+20% ($1 000)</div>
+                    <div className="rounded-xl bg-[#0B0D14] border border-white/[0.08] p-2.5 text-center">
+                      <div className="text-[9.5px] text-neutral-400 uppercase font-bold">Комиссия</div>
+                      <div className="text-sm font-mono-num font-extrabold text-[#E5B869] mt-0.5">+20% ($1 000)</div>
                     </div>
-                    <div className="rounded-xl bg-rose-500/10 border border-rose-400/30 p-2.5 text-center">
-                      <div className="text-[10px] text-rose-200 uppercase font-bold">Возврат</div>
-                      <div className="text-sm font-black text-rose-300 mt-0.5">$6 000 · {defaultTerm}р</div>
+                    <div className="rounded-xl bg-[#F43F5E]/12 border border-[#F43F5E]/30 p-2.5 text-center">
+                      <div className="text-[9.5px] text-rose-200 uppercase font-bold">К возврату</div>
+                      <div className="text-sm font-mono-num font-extrabold text-[#FDA4AF] mt-0.5">$6 000 · {defaultTerm}р</div>
                     </div>
                   </div>
 
-                  {/* Визуальный чек-лист доступности */}
-                  <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-1.5 text-[11px]">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Кредиты в комнате</span>
-                      <span className={roomState.settings.creditEnabled ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                  {/* Чек-лист доступности кредитной линии */}
+                  <div className="glass-card-inner rounded-xl p-3 space-y-1.5 text-[11px]">
+                    <div className="flex items-center justify-between border-b border-white/[0.04] pb-1">
+                      <span className="text-neutral-400">Кредиты в комнате</span>
+                      <span className={roomState.settings.creditEnabled ? 'text-[#6EE7B7] font-bold' : 'text-[#F43F5E] font-bold'}>
                         {roomState.settings.creditEnabled ? '✓ Разрешены' : '✕ Отключены'}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Доступно с {unlockRound}-го раунда</span>
-                      <span className={roomState.round >= unlockRound ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
+                    <div className="flex items-center justify-between border-b border-white/[0.04] pb-1">
+                      <span className="text-neutral-400">Доступно с {unlockRound}-го раунда</span>
+                      <span className={`font-mono-num font-bold ${roomState.round >= unlockRound ? 'text-[#6EE7B7]' : 'text-[#E5B869]'}`}>
                         {roomState.round >= unlockRound
                           ? '✓ Открыт'
                           : `Через ${unlockRound - roomState.round} р.`}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Откат после прошлого займа</span>
-                      <span className={cooldownLeft === 0 ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
+                    <div className="flex items-center justify-between border-b border-white/[0.04] pb-1">
+                      <span className="text-neutral-400">Откат после прошлого займа</span>
+                      <span className={`font-mono-num font-bold ${cooldownLeft === 0 ? 'text-[#6EE7B7]' : 'text-[#E5B869]'}`}>
                         {cooldownLeft === 0 ? '✓ Готов' : `Ещё ${cooldownLeft} р.`}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Право хода</span>
-                      <span className={isMyTurn ? 'text-emerald-400 font-bold' : 'text-slate-400 font-bold'}>
+                      <span className="text-neutral-400">Право хода</span>
+                      <span className={isMyTurn ? 'text-[#6EE7B7] font-bold' : 'text-neutral-400 font-bold'}>
                         {isMyTurn ? '✓ Ваш ход' : 'Ожидание своего хода'}
                       </span>
                     </div>
@@ -427,9 +448,9 @@ export const Modals: React.FC<ModalsProps> = ({
                       onTakeCredit();
                       onCloseCreditModal();
                     }}
-                    className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-black text-xs cursor-pointer transition"
+                    className="btn-gold-3d w-full py-2.5 rounded-xl font-display font-extrabold text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    🏦 Взять +5.000k прямо сейчас
+                    🏦 Активировать лимит +{formatMoney(5000)}
                   </button>
                 </div>
               )}

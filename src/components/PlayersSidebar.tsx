@@ -34,11 +34,7 @@ interface CashDeltaItem {
 }
 
 function formatM1Cash(amount: number): string {
-  const sign = amount < 0 ? '-' : '';
-  const formatted = Math.abs(Math.round(amount))
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return `${sign}$ ${formatted}`;
+  return formatMoney(amount);
 }
 
 const RipTombstoneSvg: React.FC = () => (
@@ -66,6 +62,44 @@ const RipTombstoneSvg: React.FC = () => (
   </svg>
 );
 
+const SoundpadEqIcon: React.FC<{ playing: boolean; accentHex: string }> = ({
+  playing,
+  accentHex,
+}) => (
+  <span
+    style={
+      playing
+        ? {
+            borderColor: `${accentHex}99`,
+            backgroundColor: `${accentHex}24`,
+            boxShadow: `0 0 10px ${accentHex}55`,
+          }
+        : undefined
+    }
+    className="shrink-0 w-6 h-5 rounded-md bg-[#0A0C12]/90 border border-white/10 flex items-center justify-center gap-[2px] px-1"
+    aria-hidden="true"
+  >
+    <span
+      style={{ backgroundColor: playing ? accentHex : '#94A3B8' }}
+      className={`w-[2px] h-2.5 rounded-full origin-bottom transition-transform ${
+        playing ? 'animate-eq-1' : 'scale-y-50 opacity-75'
+      }`}
+    />
+    <span
+      style={{ backgroundColor: playing ? accentHex : '#CBD5E1' }}
+      className={`w-[2px] h-3 rounded-full origin-bottom transition-transform ${
+        playing ? 'animate-eq-2' : 'scale-y-90 opacity-85'
+      }`}
+    />
+    <span
+      style={{ backgroundColor: playing ? accentHex : '#94A3B8' }}
+      className={`w-[2px] h-2.5 rounded-full origin-bottom transition-transform ${
+        playing ? 'animate-eq-3' : 'scale-y-65 opacity-75'
+      }`}
+    />
+  </span>
+);
+
 export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
   roomState,
   myPlayerId,
@@ -80,10 +114,22 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
   onSurrender,
 }) => {
   const [menuPlayerId, setMenuPlayerId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
   const [confirmSurrender, setConfirmSurrender] = useState(false);
+  const [playingPadId, setPlayingPadId] = useState<string | null>(null);
   const [deltas, setDeltas] = useState<CashDeltaItem[]>([]);
   const prevCashRef = useRef<Record<string, number>>({});
   const deltaTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const triggerPadTaunt = (tauntId: string) => {
+    setPlayingPadId(tauntId);
+    onSendTaunt(tauntId);
+    const t = setTimeout(() => {
+      deltaTimersRef.current.delete(t);
+      setPlayingPadId((cur) => (cur === tauntId ? null : cur));
+    }, 2400);
+    deltaTimersRef.current.add(t);
+  };
 
   useEffect(() => {
     const timers = deltaTimersRef.current;
@@ -154,25 +200,30 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
 
   return (
     <>
-      {/* Затемнение и размытие фона при клике на карточку игрока (1:1 референс) */}
+      {/* Лёгкая элегантная вуаль при открытии меню игрока без тяжёлого замыливания всей доски */}
       {menuPlayerId && (
         <div
           onClick={() => {
             setMenuPlayerId(null);
+            setMenuAnchor(null);
             setConfirmSurrender(false);
           }}
-          className="fixed inset-0 bg-black/55 backdrop-blur-[3px] z-40 transition-opacity"
+          className="fixed inset-0 bg-black/18 backdrop-blur-[1.5px] z-40 transition-opacity"
         />
       )}
 
-      <aside className="w-full max-w-md lg:max-w-none lg:w-[192px] xl:w-[216px] shrink-0 h-full flex flex-col justify-start lg:justify-center gap-2.5 py-2 lg:py-3 px-2 select-none relative z-40">
-        {/* Подсказка по панели игроков для новичков */}
-        <div className="px-1 flex items-center justify-between text-[11px] lg:text-[10px] text-neutral-400 font-semibold shrink-0">
-          <span>Игроки ({roomState.players.length})</span>
-          <span className="text-neutral-500">клик = меню</span>
+      <aside className="w-full max-w-md lg:max-w-none lg:w-[236px] xl:w-[252px] shrink-0 h-full flex flex-col justify-start lg:justify-center gap-2.5 py-2 lg:py-3 px-2 select-none relative z-40">
+        {/* Заголовок левого HUD резидентов */}
+        <div className="px-1.5 flex items-center justify-between text-[10px] text-neutral-400 font-semibold shrink-0 uppercase tracking-[0.12em]">
+          <span className="flex items-center gap-1.5 text-neutral-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#E5B869] shadow-[0_0_8px_#E5B869]" />
+            <span>Резиденты ({roomState.players.length})</span>
+          </span>
+          <span className="text-neutral-500 normal-case tracking-normal">клик = меню</span>
         </div>
-        {/* Вертикальный стек карточек игроков в стиле Monopoly One */}
-        <div className="flex flex-col gap-2.5 overflow-y-auto flex-1 min-h-0 lg:flex-initial py-1 px-0.5 chat-scrollbar">
+
+        {/* Вертикальный стек карточек игроков на тёмном графите #141720 с мощным неоновым акцентом слева */}
+        <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 lg:flex-initial pt-3.5 pb-1 px-0.5 chat-scrollbar">
           {roomState.players.map((p, idx) => {
             const isActive = idx === roomState.currentPlayerIndex && roomState.status === 'PLAYING';
             const isMenuOpen = menuPlayerId === p.id;
@@ -189,189 +240,245 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
               >
                 {/* Облачко мем-насмешки */}
                 {tauntDef && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap bg-amber-300 text-neutral-950 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xl animate-bounce z-30 border border-neutral-900">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap bg-gradient-to-r from-[#F3D082] to-[#C8963E] text-[#140F06] text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-[0_8px_20px_rgba(229,184,105,0.45)] animate-bounce z-30 border border-[#FEF3C7]/70">
                     {txt(tauntDef.text, tauntDef.cleanText, censored)}
                   </div>
                 )}
 
-                {/* Сама карточка игрока (overflow-hidden чтобы анимация дельты не выезжала за край) */}
+                {/* Карточка игрока: благородный графит #141720 + неоновый LED-акцент слева и вокруг аватара */}
                 <div
-                  onClick={() => {
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
                     setConfirmSurrender(false);
-                    setMenuPlayerId((cur) => (cur === p.id ? null : p.id));
+                    setMenuPlayerId((cur) => {
+                      if (cur === p.id) {
+                        setMenuAnchor(null);
+                        return null;
+                      }
+                      setMenuAnchor({ top: rect.top, right: rect.right });
+                      return p.id;
+                    });
                   }}
                   style={
                     p.isBankrupt
                       ? undefined
                       : isActive
                       ? {
-                          backgroundColor: p.color,
-                          boxShadow: `0 10px 26px ${p.color}55, 0 0 24px rgba(163,230,53,0.4)`,
+                          background: `radial-gradient(125% 115% at 0% 50%, color-mix(in srgb, ${p.color} 26%, #141720) 0%, #141720 66%, #0F121A 100%)`,
+                          boxShadow: `0 14px 34px -6px rgba(0,0,0,0.88), 0 0 24px -4px ${p.color}55, inset 0 1px 0 rgba(255,255,255,0.14)`,
                         }
                       : {
-                          borderLeftColor: p.color,
+                          background: `radial-gradient(110% 100% at 0% 50%, color-mix(in srgb, ${p.color} 11%, #141720) 0%, #141720 62%)`,
+                          boxShadow:
+                            '0 10px 24px -6px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.08)',
                         }
                   }
-                  className={`relative overflow-hidden rounded-[14px] px-3 py-3 text-center transition-all duration-300 cursor-pointer ${
+                  className={`relative overflow-hidden rounded-2xl pl-4 pr-3 py-2.5 transition-all duration-200 cursor-pointer ${
                     p.isBankrupt
-                      ? 'bg-[#1e1f24] border border-[#282a30] opacity-75'
+                      ? 'bg-[#0F1117]/80 border border-white/[0.06] opacity-55'
                       : isActive
-                      ? 'text-white border border-white/40 ring-2 ring-lime-300 scale-[1.02]'
-                      : 'bg-[#222328] hover:bg-[#292b31] border border-[#2e3038] border-l-4 text-neutral-100'
+                      ? 'border border-[#E5B869]/45 ring-1 ring-[#E5B869]/30 text-[#F8FAFC]'
+                      : 'border border-[#222736] hover:border-white/20 text-[#F1F5F9]'
                   }`}
                 >
-                  {/* Таймер активного хода слева от аватара */}
-                  {isActive && !p.isBankrupt && turnRemainingSec !== null && (
-                    <div
-                      title={`Осталось ${turnRemainingSec} сек на ход`}
-                      className={`absolute left-2 top-2.5 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 text-[10px] font-extrabold shadow-inner ${
-                        turnRemainingSec <= 10
-                          ? 'bg-rose-600 text-white animate-pulse'
-                          : 'bg-black/30 text-white'
-                      }`}
-                    >
-                      <span>⏱</span>
-                      <span className="tabular-nums">{turnRemainingSec}с</span>
-                    </div>
-                  )}
-
-                  {/* Мини-бейджи статусов в правом верхнем углу */}
-                  <div className="absolute right-2 top-2 flex flex-col gap-0.5 items-end text-[10px]">
-                    {p.id === myPlayerId && (
-                      <span
-                        className={`px-1.5 py-[1px] rounded-full text-[8px] font-black uppercase ${
-                          isActive
-                            ? 'bg-black/25 text-white'
-                            : 'bg-white/10 text-neutral-300'
-                        }`}
-                      >
-                        Вы
-                      </span>
-                    )}
-                    {roomState.settings.mode === 'team2v2' && (
-                      <span
-                        className={`px-1.5 py-[1px] rounded-full text-[8px] font-black ${
-                          p.team === 0
-                            ? 'bg-cyan-400/25 text-cyan-200'
-                            : 'bg-fuchsia-400/25 text-fuchsia-200'
-                        }`}
-                      >
-                        {p.team === 0 ? '2×2 A' : '2×2 B'}
-                      </span>
-                    )}
-                    {p.inJail && <span title={`В обезьяннике (${p.jailTurns}/3)`}>⛓️</span>}
-                    {p.shields > 0 && <span title={`Крыша ×${p.shields}`}>🛡️</span>}
-                  </div>
-
-                  {/* Круглый аватар с цветным кольцом */}
-                  <div
-                    style={{
-                      borderColor: p.isBankrupt
-                        ? '#52525b'
-                        : isActive
-                        ? 'rgba(255,255,255,0.85)'
-                        : p.color,
-                      backgroundColor: p.isBankrupt
-                        ? '#27272a'
-                        : isActive
-                        ? 'rgba(0,0,0,0.18)'
-                        : `${p.color}22`,
-                    }}
-                    className={`w-11 h-11 mx-auto rounded-full border-[2.5px] flex items-center justify-center text-xl shadow-md overflow-hidden ${
-                      p.isBankrupt ? 'grayscale opacity-60' : ''
-                    }`}
-                  >
-                    <PlayerAvatar avatar={p.avatar} fill />
-                  </div>
-
-                  {/* Никнейм и явный индикатор активного хода */}
-                  <div className="mt-1.5 flex items-center justify-center gap-1 min-w-0">
-                    {isActive && !p.isBankrupt && (
-                      <span className="relative flex h-2 w-2 shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-300 opacity-85" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-400" />
-                      </span>
-                    )}
+                  {/* Мощная неоновая LED-полоса цвета игрока слева */}
+                  {!p.isBankrupt && (
                     <span
-                      className={`text-[12px] font-semibold truncate ${
-                        p.isBankrupt
-                          ? 'text-neutral-500'
-                          : isActive
-                          ? 'text-white font-bold'
-                          : 'text-neutral-200'
+                      aria-hidden="true"
+                      style={{
+                        backgroundColor: p.color,
+                        boxShadow: isActive
+                          ? `0 0 18px ${p.color}, 3px 0 22px ${p.color}aa`
+                          : `0 0 10px ${p.color}88`,
+                      }}
+                      className={`pointer-events-none absolute left-0 inset-y-0 ${
+                        isActive ? 'w-[4.5px]' : 'w-[3.5px] opacity-90'
                       }`}
-                    >
-                      {p.name}
-                    </span>
-                  </div>
-                  {isActive && !p.isBankrupt && (
-                    <div className="mt-0.5 inline-flex items-center gap-1 px-2 py-[1px] rounded-full bg-black/30 border border-lime-300/60 text-lime-200 text-[9px] font-black tracking-wide uppercase shadow-xs">
-                      <span>👉</span>
-                      <span>{p.id === myPlayerId ? 'ВАШ ХОД' : 'ХОДИТ'}</span>
-                    </div>
+                    />
                   )}
 
-                  {/* Баланс либо надгробие RIP */}
-                  {p.isBankrupt ? (
-                    <RipTombstoneSvg />
-                  ) : (
-                    <>
-                      <div
-                        className={`mt-0.5 text-[18px] leading-tight font-semibold tracking-tight ${
-                          isActive ? 'text-white' : 'text-white'
-                        }`}
-                      >
-                        {formatM1Cash(p.cash)}
-                      </div>
-                      {p.credit && (() => {
-                        const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
-                        const totalTerm =
-                          p.credit.takenAtRound !== undefined
-                            ? Math.max(1, p.credit.dueRound - p.credit.takenAtRound)
-                            : defaultTerm;
-                        const roundsLeft = Math.max(0, p.credit.dueRound - roomState.round);
-                        const elapsed = Math.max(0, Math.min(totalTerm, totalTerm - roundsLeft));
-                        const pct = Math.round((elapsed / totalTerm) * 100);
-                        const urgent = roundsLeft <= 2;
-                        return (
-                          <div
-                            data-testid="player-credit-countdown"
-                            title={`Кредит: вернуть ${formatMoney(p.credit.paybackAmount)} до ${p.credit.dueRound} раунда (осталось ${roundsLeft} р.)`}
-                            className={`mt-1 mx-auto max-w-[140px] px-2 py-0.5 rounded-lg border text-[9.5px] font-extrabold shadow-xs ${
-                              urgent
-                                ? 'bg-rose-500/30 border-rose-300/70 text-rose-100 animate-pulse'
-                                : 'bg-amber-500/25 border-amber-300/60 text-amber-100'
+                  {/* Верхняя строка карточки: Аватар с неоновым ореолом + Имя и Баланс */}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      style={
+                        p.isBankrupt
+                          ? { borderColor: '#3f3f46', backgroundColor: '#18181b' }
+                          : {
+                              borderColor: p.color,
+                              backgroundColor: `${p.color}1F`,
+                              boxShadow: isActive
+                                ? `0 0 18px ${p.color}99, 0 0 6px ${p.color}, inset 0 0 8px ${p.color}55`
+                                : `0 0 12px ${p.color}4D`,
+                            }
+                      }
+                      className={`w-11 h-11 shrink-0 rounded-full border-2 flex items-center justify-center text-xl overflow-hidden ${
+                        p.isBankrupt ? 'grayscale opacity-60' : ''
+                      }`}
+                    >
+                      <PlayerAvatar avatar={p.avatar} fill />
+                    </div>
+
+                    <div className="min-w-0 flex-1 text-left">
+                      {/* Никнейм + статус ВЫ / 2×2 / таймер */}
+                      <div className="flex items-center justify-between gap-1 min-w-0">
+                        <div className="flex items-center gap-1 min-w-0">
+                          {isActive && !p.isBankrupt && (
+                            <span className="relative flex h-2 w-2 shrink-0">
+                              <span
+                                style={{ backgroundColor: p.color }}
+                                className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-80"
+                              />
+                              <span
+                                style={{ backgroundColor: p.color }}
+                                className="relative inline-flex rounded-full h-2 w-2"
+                              />
+                            </span>
+                          )}
+                          <span
+                            className={`text-[12px] font-bold truncate ${
+                              p.isBankrupt
+                                ? 'text-neutral-500 line-through'
+                                : isActive
+                                ? 'text-[#F8FAFC]'
+                                : 'text-[#E2E8F0]'
                             }`}
                           >
-                            <div className="flex items-center justify-center gap-1 leading-tight">
-                              <span>🏦</span>
-                              <span>{formatMoney(p.credit.paybackAmount)} · {roundsLeft}р</span>
-                            </div>
-                            <div className="mt-0.5 h-1 w-full rounded-full bg-black/35 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  urgent ? 'bg-rose-400' : 'bg-amber-300'
-                                }`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </>
+                            {p.name}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {p.inJail && (
+                            <span className="text-[10px]" title={`В СИЗО #13 (${p.jailTurns}/3)`}>
+                              ⛓️
+                            </span>
+                          )}
+                          {p.shields > 0 && (
+                            <span className="text-[10px]" title={`Крыша ×${p.shields}`}>
+                              🛡️
+                            </span>
+                          )}
+                          {roomState.settings.mode === 'team2v2' && (
+                            <span
+                              className={`px-1.5 py-[1px] rounded-full text-[8px] font-mono-num font-bold ${
+                                p.team === 0
+                                  ? 'bg-cyan-400/20 text-cyan-200 border border-cyan-400/35'
+                                  : 'bg-fuchsia-400/20 text-fuchsia-200 border border-fuchsia-400/35'
+                              }`}
+                            >
+                              {p.team === 0 ? '2×2 A' : '2×2 B'}
+                            </span>
+                          )}
+                          {p.id === myPlayerId && (
+                            <span className="px-1.5 py-[1px] rounded-full bg-white/[0.08] border border-white/15 text-[#E5B869] text-[8px] font-display font-bold uppercase">
+                              Вы
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Баланс крупно шрифтом Unbounded / JetBrains Mono либо RIP */}
+                      {p.isBankrupt ? (
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <RipTombstoneSvg />
+                          <span className="text-[10px] font-mono-num font-bold text-neutral-500 uppercase">
+                            Банкрот
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mt-0.5 flex items-baseline justify-between gap-1.5">
+                          <span className="font-display font-extrabold tabular-nums text-[16px] xl:text-[17.5px] leading-tight tracking-tight text-[#F8FAFC]">
+                            {formatM1Cash(p.cash)}
+                          </span>
+
+                          {isActive && turnRemainingSec !== null ? (
+                            <span
+                              title={`Осталось ${turnRemainingSec} сек на ход`}
+                              className={`px-1.5 py-[1px] rounded-full font-mono-num text-[9.5px] font-bold flex items-center gap-0.5 shrink-0 ${
+                                turnRemainingSec <= 10
+                                  ? 'bg-[#F43F5E] text-white animate-pulse'
+                                  : 'bg-[#0A0C12]/85 border border-white/12 text-neutral-300'
+                              }`}
+                            >
+                              <span>⏱</span>
+                              <span>{turnRemainingSec}с</span>
+                            </span>
+                          ) : propCount > 0 ? (
+                            <span className="text-[9.5px] font-mono-num text-neutral-400 shrink-0">
+                              {propCount} ак.
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Плашка активного хода ВАШ ХОД / ХОДИТ */}
+                  {isActive && !p.isBankrupt && (
+                    <div className="mt-1.5 flex items-center justify-between gap-1.5 pt-1 border-t border-white/[0.06]">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-[1.5px] rounded-full font-display font-bold text-[8.5px] tracking-wider uppercase ${
+                          p.id === myPlayerId
+                            ? 'bg-[#E5B869]/16 border border-[#E5B869]/50 text-[#F3D082] shadow-[0_0_12px_rgba(229,184,105,0.2)]'
+                            : 'bg-[#10B981]/14 border border-[#10B981]/40 text-[#6EE7B7]'
+                        }`}
+                      >
+                        <span>{p.id === myPlayerId ? 'ВАШ ХОД' : 'ХОДИТ'}</span>
+                      </span>
+                      <span className="text-[9.5px] font-mono-num text-neutral-400">
+                        Капитал {formatMoney(netWorth)}
+                      </span>
+                    </div>
                   )}
+
+                  {/* Индикатор открытого кредита */}
+                  {!p.isBankrupt && p.credit && (() => {
+                    const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
+                    const totalTerm =
+                      p.credit.takenAtRound !== undefined
+                        ? Math.max(1, p.credit.dueRound - p.credit.takenAtRound)
+                        : defaultTerm;
+                    const roundsLeft = Math.max(0, p.credit.dueRound - roomState.round);
+                    const elapsed = Math.max(0, Math.min(totalTerm, totalTerm - roundsLeft));
+                    const pct = Math.round((elapsed / totalTerm) * 100);
+                    const urgent = roundsLeft <= 2;
+                    return (
+                      <div
+                        data-testid="player-credit-countdown"
+                        title={`Кредит: вернуть ${formatMoney(p.credit.paybackAmount)} до ${p.credit.dueRound} раунда (осталось ${roundsLeft} р.)`}
+                        className={`mt-1.5 px-2 py-0.5 rounded-lg border font-mono-num text-[9.5px] font-bold ${
+                          urgent
+                            ? 'bg-[#F43F5E]/20 border-[#F43F5E]/60 text-rose-100 animate-pulse'
+                            : 'bg-[#E5B869]/14 border-[#E5B869]/40 text-[#F3D082]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 leading-tight">
+                          <span>🏦 Долг {formatMoney(p.credit.paybackAmount)}</span>
+                          <span>{roundsLeft}р</span>
+                        </div>
+                        <div className="mt-0.5 h-1 w-full rounded-full bg-black/45 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              urgent ? 'bg-[#F43F5E]' : 'bg-[#E5B869]'
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Всплывающая дельта денег строго внутри границ карточки */}
                   {playerDeltas.map((d) => (
                     <div
                       key={d.id}
-                      className="pointer-events-none absolute inset-x-1.5 bottom-1.5 z-30 flex justify-center"
+                      className="pointer-events-none absolute inset-x-1.5 bottom-1.5 z-30 flex justify-end pr-2"
                     >
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[11px] font-black shadow-lg border border-black/20 animate-cash-delta ${
+                        className={`px-2 py-0.5 rounded-full font-mono-num text-[11px] font-extrabold shadow-lg border animate-cash-delta ${
                           d.delta > 0
-                            ? 'bg-lime-400 text-neutral-950'
-                            : 'bg-rose-600 text-white'
+                            ? 'bg-[#10B981] border-[#6EE7B7]/60 text-white'
+                            : 'bg-[#F43F5E] border-rose-300/50 text-white'
                         }`}
                       >
                         {d.delta > 0 ? `+${formatM1Cash(d.delta)}` : formatM1Cash(d.delta)}
@@ -380,12 +487,22 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                   ))}
                 </div>
 
-                {/* Выпадающее контекстное меню при клике по карточке (как в референсе M1) */}
+                {/* Выпадающее контекстное меню при клике по игроку: локальная глубокая тень без мёртвого блюра поля */}
                 {isMenuOpen && (
-                  <div className="mt-1.5 rounded-xl bg-[#222328] border border-[#343640] p-1.5 shadow-2xl text-left text-xs space-y-1 animate-action-card">
-                    <div className="px-2 py-1 text-[10px] text-neutral-400 border-b border-white/5 flex justify-between">
-                      <span>Полей: {propCount}</span>
-                      <span>Активы: {formatMoney(netWorth)}</span>
+                  <div
+                    style={
+                      menuAnchor
+                        ? ({
+                            '--menu-top': `${Math.max(12, Math.min(window.innerHeight - 270, menuAnchor.top))}px`,
+                            '--menu-left': `${menuAnchor.right + 12}px`,
+                          } as React.CSSProperties)
+                        : undefined
+                    }
+                    className="mt-1.5 lg:mt-0 lg:fixed lg:top-[var(--menu-top)] lg:left-[var(--menu-left)] lg:w-[238px] z-50 rounded-2xl bg-[#11141E]/98 backdrop-blur-xl border border-white/12 p-2 shadow-[0_28px_70px_rgba(0,0,0,0.92),0_0_0_1px_rgba(229,184,105,0.16)] text-left text-xs space-y-1 animate-action-card"
+                  >
+                    <div className="px-2.5 py-1.5 text-[10px] text-neutral-400 border-b border-white/[0.07] flex justify-between items-center font-mono-num">
+                      <span>Активов: <b className="text-[#F1F5F9]">{propCount}</b></span>
+                      <span>Капитал: <b className="text-[#E5B869]">{formatMoney(netWorth)}</b></span>
                     </div>
 
                     <button
@@ -395,7 +512,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                         setMenuPlayerId(null);
                         onOpenProfile(p.id);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-sky-200 font-semibold transition cursor-pointer"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-white/[0.08] text-[#F1F5F9] font-semibold transition cursor-pointer"
                     >
                       <span>📊 Профиль и статистика</span>
                     </button>
@@ -409,10 +526,10 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                             setMenuPlayerId(null);
                             onOpenTradeWith(p.id);
                           }}
-                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-white/10 disabled:opacity-40 text-neutral-100 font-semibold transition cursor-pointer"
+                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl hover:bg-[#E5B869]/14 disabled:opacity-40 text-[#F3D082] font-semibold transition cursor-pointer"
                         >
-                          <span>📄 Договор ({tradesLeft}/3)</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10">
+                          <span>🤝 Договор ({tradesLeft}/3)</span>
+                          <span className="font-mono-num text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-white">
                             {propCount}
                           </span>
                         </button>
@@ -433,9 +550,9 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                             setMenuPlayerId(null);
                             onStartKickVote(p.id);
                           }}
-                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-rose-500/20 disabled:opacity-40 text-rose-200 font-semibold transition cursor-pointer"
+                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl hover:bg-[#F43F5E]/18 disabled:opacity-40 text-rose-300 font-semibold transition cursor-pointer"
                         >
-                          <span>👢 Кикнуть (голосование)</span>
+                          <span>👢 Кикнуть</span>
                           <span className="text-[10px] opacity-80">🗳️</span>
                         </button>
                       </>
@@ -448,14 +565,14 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                             setMenuPlayerId(null);
                             onOpenCredit();
                           }}
-                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-neutral-100 font-semibold transition cursor-pointer"
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-[#10B981]/14 text-[#6EE7B7] font-semibold transition cursor-pointer"
                         >
                           <span>🏦 Кредит банка</span>
                         </button>
                         {!confirmSurrender ? (
                           <button
                             onClick={() => setConfirmSurrender(true)}
-                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400 font-semibold transition cursor-pointer"
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-[#F43F5E]/18 text-[#F43F5E] font-semibold transition cursor-pointer"
                           >
                             <span>🏳️ Сдаться</span>
                           </button>
@@ -467,13 +584,13 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                                 setMenuPlayerId(null);
                                 onSurrender();
                               }}
-                              className="flex-1 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-bold cursor-pointer"
+                              className="flex-1 py-1 rounded-lg bg-[#F43F5E] text-white text-[11px] font-bold cursor-pointer"
                             >
                               Точно!
                             </button>
                             <button
                               onClick={() => setConfirmSurrender(false)}
-                              className="px-2 py-1 rounded-lg bg-neutral-700 text-neutral-200 text-[11px] cursor-pointer"
+                              className="px-2.5 py-1 rounded-lg bg-white/10 text-neutral-200 text-[11px] cursor-pointer"
                             >
                               Отмена
                             </button>
@@ -488,7 +605,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
           })}
         </div>
 
-        {/* Понятная панель быстрых действий: Крупная кнопка Кредита, Договор и мем-реакции */}
+        {/* НИЖНИЙ ДОК HUD: VIP-ЛИМИТ БАНКА «КРЕДИТ» + ФИЗИЧЕСКИЕ DJ / STREAMDECK ПЭДЫ САУНДПАДА */}
         {me && !me.isBankrupt && roomState.status === 'PLAYING' && (() => {
           const myCredit = me.credit;
           const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
@@ -505,132 +622,169 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
             !myCredit && me.creditCooldownUntilRound && roomState.round < me.creditCooldownUntilRound
               ? me.creditCooldownUntilRound - roomState.round
               : 0;
-          const secondaryTaunts = [
+
+          const activeMyTauntId = playingPadId || activeTaunts[myPlayerId]?.tauntId || null;
+
+          const soundPads = [
+            {
+              id: 'loh',
+              testId: 'taunt-voice-loh',
+              label: censored ? '🤡 Ну ты и простофиля!' : '🦣 Ебать ты мамонт!',
+              title: censored ? 'Ну ты и простофиля! (с озвучкой)' : 'Ебать ты мамонт! (с озвучкой)',
+              ledHex: '#E5B869',
+            },
+            {
+              id: 'rent_rage',
+              testId: 'taunt-voice-rent-rage',
+              label: censored
+                ? '😤 Сколько можно платить аренду!'
+                : '🖕 Иди нахуй со своей арендой!',
+              title: censored
+                ? 'Да сколько можно платить аренду?! (с озвучкой)'
+                : 'Иди нахуй со своей арендой! (с озвучкой)',
+              ledHex: '#F43F5E',
+            },
             {
               id: 'fiasco',
               testId: 'taunt-voice-fiasco',
               label: '🤦‍♂️ Это фиаско, братан',
-              cls: 'from-sky-500/18 to-indigo-500/18 hover:from-sky-500/30 hover:to-indigo-500/30 border-sky-400/40 text-sky-100',
+              title: 'Это фиаско, братан! (с озвучкой)',
+              ledHex: '#38BDF8',
             },
             {
               id: 'govno',
               testId: 'taunt-voice-govno',
-              label: censored ? '💩 Гениальная инвестиция' : '💩 Инвестировал в говно',
-              cls: 'from-yellow-600/20 to-amber-700/20 hover:from-yellow-600/35 hover:to-amber-700/35 border-yellow-500/40 text-yellow-100',
+              label: censored ? '💩 Гениальная инвестиция' : '💩 Въебал бабки в говно',
+              title: censored
+                ? 'Гениальная инвестиция! (с озвучкой)'
+                : 'Въебал бабки в говно! (с озвучкой)',
+              ledHex: '#F59E0B',
             },
             {
               id: 'press_f',
               testId: 'taunt-voice-press-f',
-              label: '🕯️ Помянем... Press F',
-              cls: 'from-purple-500/18 to-slate-600/25 hover:from-purple-500/30 hover:to-slate-600/40 border-purple-400/40 text-purple-100',
+              label: '🕯️ Земля бетоном... Press F',
+              title: 'Земля бетоном... Press F (с озвучкой)',
+              ledHex: '#A855F7',
             },
           ];
 
           return (
-          <div className="shrink-0 min-w-0 bg-[#222328] border border-[#2e3038] rounded-xl p-2 space-y-1.5 shadow-lg">
-            <button
-              type="button"
-              data-testid="sidebar-credit-report"
-              onClick={onOpenCredit}
-              className={`w-full py-1.5 px-2.5 rounded-xl flex flex-col gap-1 transition cursor-pointer border ${
-                myCredit
-                  ? urgent
-                    ? 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-400/60 text-rose-100'
-                    : 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400/50 text-amber-200'
-                  : 'bg-amber-400/15 hover:bg-amber-400/25 border-amber-400/35 text-amber-300'
-              }`}
-              title="Открыть визуальный отчёт по кредиту банка"
-            >
-              <div className="w-full flex items-center justify-between gap-1.5">
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className="text-xl leading-none shrink-0">🏦</span>
-                  <span className="text-left leading-tight min-w-0">
-                    <span className="block text-xs font-black tracking-wide">
-                      КРЕДИТ {myCredit ? (urgent ? '· СРОЧНО' : '· АКТИВЕН') : ''}
+            <div className="shrink-0 min-w-0 glass-panel rounded-2xl p-2 space-y-2">
+              {/* VIP-лимит в банке: блок «КРЕДИТ» с изумрудно-золотым акцентом (высота >= 48px) */}
+              <button
+                type="button"
+                data-testid="sidebar-credit-report"
+                onClick={onOpenCredit}
+                className={`relative overflow-hidden w-full py-2.5 px-3 rounded-xl flex flex-col gap-1.5 transition cursor-pointer border ${
+                  myCredit
+                    ? urgent
+                      ? 'bg-gradient-to-br from-[#271219] to-[#120B10] border-[#F43F5E]/70 text-rose-100 shadow-[0_0_20px_rgba(244,63,94,0.28)]'
+                      : 'bg-gradient-to-br from-[#201A12] to-[#101219] border-[#E5B869]/60 text-[#F3D082] shadow-[0_0_18px_rgba(229,184,105,0.18)]'
+                    : 'bg-gradient-to-br from-[#10221E] via-[#131922] to-[#0D1017] border-[#10B981]/45 hover:border-[#E5B869]/70 text-[#F8FAFC] shadow-[inset_0_1px_0_rgba(110,231,183,0.2),0_8px_20px_rgba(0,0,0,0.5)]'
+                }`}
+                title="Открыть VIP-лимит и кредитную линию банка"
+              >
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -right-4 -top-4 w-16 h-16 rounded-full bg-[radial-gradient(circle,rgba(229,184,105,0.22)_0%,transparent_70%)]"
+                />
+                <div className="w-full flex items-center justify-between gap-2 relative z-10">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="w-7 h-7 rounded-lg bg-[#090C11]/85 border border-[#E5B869]/40 flex items-center justify-center text-sm shadow-inner shrink-0">
+                      🏦
                     </span>
-                    <span className="block text-[10px] font-semibold opacity-85 truncate">
-                      {myCredit
-                        ? `Долг ${formatMoney(myCredit.paybackAmount)} · ост. ${roundsLeft}р`
-                        : cooldownLeft > 0
-                        ? `Откат ещё ${cooldownLeft}р`
-                        : 'Отчёт · взять +$5 000'}
+                    <span className="text-left leading-tight min-w-0">
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-display font-extrabold text-[11px] tracking-wider text-[#F8FAFC]">
+                          КРЕДИТ
+                        </span>
+                        <span
+                          className={`px-1.5 py-[0.5px] rounded text-[8px] font-mono-num font-bold uppercase ${
+                            myCredit
+                              ? urgent
+                                ? 'bg-[#F43F5E]/25 text-rose-200'
+                                : 'bg-[#E5B869]/20 text-[#F3D082]'
+                              : 'bg-[#10B981]/20 border border-[#10B981]/35 text-[#6EE7B7]'
+                          }`}
+                        >
+                          {myCredit ? (urgent ? 'СРОЧНО' : 'АКТИВЕН') : 'VIP ЛИМИТ'}
+                        </span>
+                      </span>
+                      <span className="block font-mono-num text-[10px] font-semibold text-neutral-300 mt-0.5">
+                        {myCredit
+                          ? `Долг ${formatMoney(myCredit.paybackAmount)} · ${roundsLeft}р`
+                          : cooldownLeft > 0
+                          ? `Откат линии: ${cooldownLeft}р`
+                          : `Доступно +${formatMoney(5000)}`}
+                      </span>
                     </span>
                   </span>
-                </span>
-                <span className="text-[11px] font-black opacity-80 shrink-0">›</span>
+                  <span className="text-sm font-bold text-[#E5B869] shrink-0">›</span>
+                </div>
+                {myCredit && (
+                  <div className="w-full h-1.5 rounded-full bg-black/50 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        urgent
+                          ? 'bg-[#F43F5E]'
+                          : me.cash >= myCredit.paybackAmount
+                          ? 'bg-[#10B981]'
+                          : 'bg-[#E5B869]'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                )}
+              </button>
+
+              {/* Физический DJ / StreamDeck Саундпад */}
+              <div className="space-y-1 pt-0.5 min-w-0">
+                <div className="flex items-center justify-between px-0.5 text-[9px] uppercase tracking-[0.14em] text-neutral-500 font-bold">
+                  <span>Soundpad Deck</span>
+                  {tauntCooldownLeft > 0 ? (
+                    <span className="font-mono-num text-[#E5B869] normal-case tracking-normal">
+                      ⏳ {tauntCooldownLeft}с
+                    </span>
+                  ) : (
+                    <span className="font-mono-num text-[#10B981]">LIVE</span>
+                  )}
+                </div>
+
+                {soundPads.map((pad) => {
+                  const isPlaying = activeMyTauntId === pad.id;
+                  return (
+                    <button
+                      key={pad.id}
+                      type="button"
+                      data-testid={pad.testId}
+                      disabled={tauntCooldownLeft > 0}
+                      onClick={() => triggerPadTaunt(pad.id)}
+                      title={pad.title}
+                      className={`streamdeck-pad w-full min-w-0 py-1.5 pl-3 pr-2 rounded-xl overflow-hidden disabled:opacity-40 text-left flex items-center justify-between gap-1.5 cursor-pointer ${
+                        isPlaying ? 'animate-pad-playing !border-[#E5B869]/75' : ''
+                      }`}
+                    >
+                      {/* Левая неоновая LED-полоса пэда */}
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          backgroundColor: pad.ledHex,
+                          boxShadow: isPlaying
+                            ? `0 0 14px ${pad.ledHex}, 2px 0 16px ${pad.ledHex}`
+                            : `0 0 8px ${pad.ledHex}aa`,
+                        }}
+                        className="pointer-events-none absolute left-0 inset-y-1 w-[3.5px] rounded-r-full"
+                      />
+                      <span className="min-w-0 flex-1 text-[10.5px] font-bold text-[#F1F5F9] leading-[1.2] whitespace-normal break-words">
+                        {pad.label}
+                      </span>
+                      <SoundpadEqIcon playing={isPlaying} accentHex={pad.ledHex} />
+                    </button>
+                  );
+                })}
               </div>
-              {myCredit && (
-                <div className="w-full h-1.5 rounded-full bg-black/40 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      urgent ? 'bg-rose-400' : me.cash >= myCredit.paybackAmount ? 'bg-emerald-400' : 'bg-amber-300'
-                    }`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              )}
-            </button>
-
-            {/* Голосовые фразы с озвучкой для всех игроков */}
-            <div className="space-y-1 pt-0.5 min-w-0">
-              {tauntCooldownLeft > 0 && (
-                <div className="text-[9.5px] font-bold text-amber-300/85 text-center leading-none pb-0.5 tabular-nums">
-                  ⏳ Откат озвучки: {tauntCooldownLeft}с
-                </div>
-              )}
-              <button
-                type="button"
-                data-testid="taunt-voice-loh"
-                disabled={tauntCooldownLeft > 0}
-                onClick={() => onSendTaunt('loh')}
-                title={censored ? 'Ну ты и простофиля! (с озвучкой)' : 'Ебать ты лох! (с озвучкой)'}
-                className="w-full min-w-0 py-1.5 px-2 rounded-lg bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/35 hover:to-orange-500/35 border border-amber-400/45 disabled:opacity-35 text-amber-100 text-[10.5px] xl:text-[11px] font-extrabold leading-tight flex items-center justify-between gap-1 transition cursor-pointer shadow-xs"
-              >
-                <span className="min-w-0 text-left break-words">
-                  {censored ? '🤡 Ну ты и простофиля' : '🤡 Ебать ты лох'}
-                </span>
-                <span className="shrink-0 text-xs leading-none">🔊</span>
-              </button>
-
-              <button
-                type="button"
-                data-testid="taunt-voice-rent-rage"
-                disabled={tauntCooldownLeft > 0}
-                onClick={() => onSendTaunt('rent_rage')}
-                title={
-                  censored
-                    ? 'Да сколько можно платить аренду?! (с озвучкой)'
-                    : 'Иди нахуй со своей арендой! (с озвучкой)'
-                }
-                className="w-full min-w-0 py-1.5 px-2 rounded-lg bg-gradient-to-r from-rose-500/20 to-fuchsia-500/20 hover:from-rose-500/35 hover:to-fuchsia-500/35 border border-rose-400/45 disabled:opacity-35 text-rose-100 text-[10px] xl:text-[10.5px] font-extrabold leading-tight flex items-center justify-between gap-1 transition cursor-pointer shadow-xs"
-              >
-                <span className="min-w-0 text-left break-words">
-                  {censored
-                    ? '😤 Сколько можно платить аренду'
-                    : '🖕 Иди нахуй со своей арендой'}
-                </span>
-                <span className="shrink-0 text-xs leading-none">🔊</span>
-              </button>
-
-              {secondaryTaunts.map((st) => {
-                const def = TAUNTS.find((t) => t.id === st.id);
-                return (
-                  <button
-                    key={st.id}
-                    type="button"
-                    data-testid={st.testId}
-                    disabled={tauntCooldownLeft > 0}
-                    onClick={() => onSendTaunt(st.id)}
-                    title={def ? `${txt(def.text, def.cleanText, censored)} (с озвучкой)` : st.label}
-                    className={`w-full min-w-0 py-1 px-2 rounded-lg bg-gradient-to-r ${st.cls} border disabled:opacity-35 text-[10px] font-bold leading-tight flex items-center justify-between gap-1 transition cursor-pointer`}
-                  >
-                    <span className="min-w-0 text-left truncate">{st.label}</span>
-                    <span className="shrink-0 text-[11px] leading-none">🔊</span>
-                  </button>
-                );
-              })}
             </div>
-          </div>
           );
         })()}
       </aside>

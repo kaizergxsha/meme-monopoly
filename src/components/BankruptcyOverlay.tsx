@@ -106,8 +106,8 @@ export const BankruptcyOverlay: React.FC<BankruptcyOverlayProps> = ({
 
       {/* ФИНАЛЬНЫЙ ЭКРАН ПОБЕДИТЕЛЯ МАТЧА */}
       {roomState.status === 'FINISHED' && !anim && (
-        <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-slate-900 border-2 border-amber-400 rounded-3xl p-6 text-center shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-40 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-panel w-full max-w-md bg-[#141724]/86 backdrop-blur-2xl border border-amber-400/60 rounded-3xl p-6 text-center shadow-2xl space-y-4">
             <div className="text-5xl">🏆</div>
             <h2 className="text-2xl font-black text-amber-300 uppercase">
               {roomState.winnerTeam !== null

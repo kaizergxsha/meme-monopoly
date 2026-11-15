@@ -34,17 +34,16 @@ interface LobbyViewProps {
 }
 
 const GLASS_CARD =
-  'bg-white/[0.06] backdrop-blur-xl border border-white/[0.14] rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.45)]';
+  'glass-panel rounded-2xl';
 const GLASS_SUBCARD =
-  'bg-white/[0.04] backdrop-blur-md border border-white/[0.1] rounded-xl';
+  'bg-[#0D1017]/90 backdrop-blur-md border border-white/[0.07] rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]';
 const GLASS_INPUT =
-  'bg-black/30 backdrop-blur-md border border-white/[0.14] focus:border-amber-400/80 outline-none rounded-xl text-white placeholder:text-slate-400/70 transition';
+  'bg-[#090B10]/90 backdrop-blur-md border border-white/[0.1] focus:border-[#E5B869]/75 outline-none rounded-xl text-[#F1F5F9] placeholder:text-neutral-500 transition';
 
 const AmbientBackdrop: React.FC = () => (
   <div className="pointer-events-none fixed inset-0 overflow-hidden z-0" aria-hidden="true">
-    <div className="absolute -top-28 -left-24 w-[420px] h-[420px] rounded-full bg-indigo-600/25 blur-[130px]" />
-    <div className="absolute top-1/3 -right-28 w-[460px] h-[460px] rounded-full bg-fuchsia-600/20 blur-[140px]" />
-    <div className="absolute -bottom-32 left-1/3 w-[440px] h-[440px] rounded-full bg-emerald-500/15 blur-[140px]" />
+    <div className="absolute -top-28 left-1/4 w-[480px] h-[480px] rounded-full bg-[#E5B869]/[0.06] blur-[140px]" />
+    <div className="absolute -bottom-32 right-1/4 w-[460px] h-[460px] rounded-full bg-[#10B981]/[0.07] blur-[140px]" />
   </div>
 );
 
@@ -542,7 +541,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 {
                   key: 'creditEnabled' as const,
                   label: '🏦 Кредит в банке',
-                  sub: '5.000k под процент на 5 раундов',
+                  sub: '$5 000 под процент на 5 раундов',
                 },
                 {
                   key: 'auctionsEnabled' as const,
@@ -557,7 +556,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 {
                   key: 'fairTradeLimit' as const,
                   label: '⚖️ Фильтр ±50% на договоры',
-                  sub: 'Защита от перелива всех активов за 1k',
+                  sub: 'Защита от перелива всех активов за $1 000',
                 },
                 {
                   key: 'retroRules' as const,

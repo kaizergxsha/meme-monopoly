@@ -179,7 +179,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-3xl max-h-[92dvh] overflow-y-auto chat-scrollbar rounded-2xl bg-[#111420] border border-white/15 shadow-[0_24px_90px_rgba(0,0,0,0.85)] p-4 sm:p-6 space-y-5 text-slate-100"
+        className="w-full max-w-3xl max-h-[92dvh] overflow-y-auto chat-scrollbar rounded-2xl bg-[#111420]/85 backdrop-blur-2xl border border-white/20 shadow-[0_24px_90px_rgba(0,0,0,0.85)] p-4 sm:p-6 space-y-5 text-slate-100"
       >
         {/* Шапка модального окна */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3.5">

@@ -15,11 +15,13 @@ import {
   txt,
 } from '../../shared/rules.ts';
 import { BoardCellDef, RoomState, TradeSide } from '../../shared/types.ts';
+import { soundEngine } from '../utils/soundEngine.ts';
 import { BoardTokensLayer } from './BoardTokensLayer.tsx';
 import { CellArtwork } from './CellArtwork.tsx';
 import { CenterStage, TradeDraftState } from './CenterStage.tsx';
 
-const formatDollar = (value: number): string => value.toLocaleString('ru-RU');
+const formatDollar = (value: number): string =>
+  value.toLocaleString('ru-RU').replace(/\u00a0/g, ' ');
 
 function getCategoryBadge(
   groupId?: string,
@@ -27,28 +29,28 @@ function getCategoryBadge(
 ): { icon: string; label: string } {
   switch (groupId) {
     case 'food':
-      return { icon: '🌯', label: 'Стритфуд' };
+      return { icon: '🌯', label: 'Дешманский хавчик' };
     case 'clothes':
-      return { icon: '👕', label: 'Гардероб' };
+      return { icon: '🧥', label: 'Скам и паль' };
     case 'cars':
-      return { icon: '🚗', label: 'Автосеть' };
+      return { icon: '🚗', label: 'Транспортные активы' };
     case 'scam':
-      return { icon: '📉', label: 'Инфобиз' };
+      return { icon: '📣', label: 'Инфоцыгане и прогрев' };
     case 'booze':
-      return { icon: '🍺', label: 'Бар' };
+      return { icon: '💨', label: 'Тяжёлый дофамин' };
     case 'delivery':
-      return { icon: '🛵', label: 'Логистика' };
+      return { icon: '📦', label: 'Рабский труд' };
     case 'gaming':
-      return { icon: '🎮', label: 'Киберспорт' };
+      return { icon: '🧠', label: 'Брейнрот и задроты' };
     case 'it':
-      return { icon: '💻', label: 'IT-сеть' };
+      return { icon: '🔒', label: 'Цифровой концлагерь' };
     case 'realty':
-      return { icon: '🏢', label: 'Недвижимость' };
+      return { icon: '🪳', label: 'Убитая недвижка' };
     case 'gadgets':
-      return { icon: '📱', label: 'Техно-люкс' };
+      return { icon: '⛓️', label: 'Тяжёлый люкс в долг' };
     default:
-      if (cellType === 'CAR') return { icon: '🚗', label: 'Автосеть' };
-      if (cellType === 'IT_UTILITY') return { icon: '💻', label: 'IT-сеть' };
+      if (cellType === 'CAR') return { icon: '🚗', label: 'Транспортные активы' };
+      if (cellType === 'IT_UTILITY') return { icon: '🔒', label: 'Цифровой концлагерь' };
       return { icon: '🏷️', label: 'Отрасль' };
   }
 }
@@ -97,53 +99,53 @@ function getSpecialPopoverMeta(
     if (def.type === 'PORTAL') {
       return {
         headerHex: '#0284c7',
-        title: 'Бонус +1.5k',
+        title: 'Бонус +$1 500',
         subtitle: 'Особое поле',
-        description: 'Попав на это поле, вы получаете +1.500k.',
+        description: 'Попав на это поле, вы получаете +$1 500.',
       };
     }
     if (def.type === 'CHANCE') {
       const isBon = def.id === 2 || def.id === 22;
       return {
         headerHex: '#65a30d',
-        title: isBon ? 'Бонус +1.000k' : 'Штраф -1.000k',
+        title: isBon ? 'Бонус +$1 000' : 'Штраф -$1 000',
         subtitle: 'Ретро-событие',
         description: isBon
-          ? 'Вы получаете +1.000k из банка.'
-          : 'Вы платите 1.000k в банк.',
+          ? 'Вы получаете +$1 000 из банка.'
+          : 'Вы платите $1 000 в банк.',
       };
     }
   }
 
   const title = txt(def.name, def.cleanName, censored);
-  const description = txt(def.subtitle, def.cleanSubtitle, censored);
+  const description = txt(def.description || def.subtitle, def.cleanDescription || def.cleanSubtitle, censored);
 
   switch (def.type) {
     case 'START':
-      return { headerHex: '#0f766e', title, subtitle: 'Старт', description };
+      return { headerHex: '#E5B869', title, subtitle: 'Старт · Получка +$2 000', description };
     case 'JAIL':
-      return { headerHex: '#64748b', title, subtitle: 'Особое поле', description };
+      return { headerHex: '#F43F5E', title, subtitle: 'Казённый бастион · СИЗО #13', description };
     case 'POLICE':
-      return { headerHex: '#64748b', title, subtitle: 'Нарушение правил', description };
+      return { headerHex: '#F43F5E', title, subtitle: 'Приём с мигалками', description };
     case 'CHANCE':
-      return { headerHex: '#65a30d', title, subtitle: 'Случайное событие', description };
+      return { headerHex: '#10B981', title, subtitle: 'VIP-Лутбокс Фортуны', description };
     case 'TAX':
-      return { headerHex: '#0284c7', title, subtitle: 'Налог', description };
+      return { headerHex: '#F43F5E', title, subtitle: 'Опасный сектор · Списание', description };
     case 'PORTAL':
-      return { headerHex: '#0284c7', title, subtitle: 'Квантовый переход', description };
+      return { headerHex: '#A855F7', title, subtitle: 'Квантовая червоточина', description };
     case 'JACKPOT':
       if (russianRoulette) {
         return {
-          headerHex: '#be123c',
+          headerHex: '#F43F5E',
           title: 'Русская рулетка',
           subtitle: 'Смертельный барабан',
           description:
             'Выберите 1–5 патронников: холостой даёт награду, пуля выводит из игры и освобождает все клетки.',
         };
       }
-      return { headerHex: '#b45309', title, subtitle: 'Мини-игра', description };
+      return { headerHex: '#E5B869', title, subtitle: 'Хайроллер Джекпот 777', description };
     default:
-      return { headerHex: '#475569', title, subtitle: 'Поле доски', description };
+      return { headerHex: '#64748B', title, subtitle: 'Поле доски', description };
   }
 }
 
@@ -221,6 +223,81 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
     left: number;
     top: number;
   } | null>(null);
+  const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
+  const [boardShake, setBoardShake] = useState(false);
+  const [policeFlash, setPoliceFlash] = useState(false);
+  const [flyTransfer, setFlyTransfer] = useState<{
+    id: string;
+    label: string;
+    isPositive: boolean;
+    xPct: number;
+    yPct: number;
+  } | null>(null);
+  const lastDiceTsRef = useRef<number>(0);
+  const lastArrestTsRef = useRef<number>(0);
+  const lastTransferIdRef = useRef<string | null>(null);
+
+  // Автозакрытие поповера при появлении важной фазы действия, чтобы не перекрывать центр
+  useEffect(() => {
+    const curId = roomState.players[roomState.currentPlayerIndex]?.id;
+    const isMyActionPhase =
+      curId === myPlayerId &&
+      ['BUY_DECISION', 'CHANCE', 'JACKPOT', 'PORTAL', 'CHOOSE_SPEED_TARGET', 'PENDING_DEBT'].includes(
+        roomState.phase
+      );
+    if (isMyActionPhase || roomState.phase === 'AUCTION') {
+      onSelectCell(null);
+    }
+  }, [roomState.phase, roomState.currentPlayerIndex, myPlayerId, roomState.players, onSelectCell]);
+
+  // Микро-тряска доски при дубле / трипле
+  useEffect(() => {
+    const ld = roomState.lastDice;
+    if (!ld || ld.timestamp === lastDiceTsRef.current) return;
+    lastDiceTsRef.current = ld.timestamp;
+    if (ld.isDouble || ld.isTriple) {
+      setBoardShake(true);
+      const t = setTimeout(() => setBoardShake(false), 420);
+      return () => clearTimeout(t);
+    }
+  }, [roomState.lastDice]);
+
+  // Мигание сирены и звук при отправке в Изолятор полицией
+  useEffect(() => {
+    const ts = roomState.lastPoliceArrestAt;
+    if (!ts || ts === lastArrestTsRef.current) return;
+    lastArrestTsRef.current = ts;
+    soundEngine.playSiren();
+    setPoliceFlash(true);
+    setBoardShake(true);
+    const t = setTimeout(() => {
+      setPoliceFlash(false);
+      setBoardShake(false);
+    }, 2800);
+    return () => clearTimeout(t);
+  }, [roomState.lastPoliceArrestAt]);
+
+  // Летящий кэш-трансфер прямо над клеткой события
+  useEffect(() => {
+    const tr = roomState.lastTransfer;
+    if (!tr || tr.id === lastTransferIdRef.current) return;
+    lastTransferIdRef.current = tr.id;
+    const pos = getCellGridPosition(tr.cellId);
+    const xPct = ((pos.col - 0.5) / 11) * 100;
+    const yPct = ((pos.row - 0.5) / 11) * 100;
+    const isIncomeForMe = tr.toId === myPlayerId;
+    const isLossForMe = tr.fromId === myPlayerId;
+    const prefix = isIncomeForMe ? '+' : isLossForMe ? '-' : tr.fromId === 'BANK' ? '+' : '💸 ';
+    setFlyTransfer({
+      id: tr.id,
+      label: `${prefix}$${formatDollar(tr.amount)}`,
+      isPositive: tr.fromId === 'BANK' || isIncomeForMe,
+      xPct: Math.min(88, Math.max(12, xPct)),
+      yPct: Math.min(88, Math.max(12, yPct)),
+    });
+    const t = setTimeout(() => setFlyTransfer(null), 1700);
+    return () => clearTimeout(t);
+  }, [roomState.lastTransfer, myPlayerId]);
 
   useEffect(() => {
     if (!isPopoverOpen) return;
@@ -248,8 +325,8 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
       const wrapRect = wrapEl.getBoundingClientRect();
       const cellRect = cellEl.getBoundingClientRect();
-      const popW = popEl.offsetWidth || 252;
-      const popH = popEl.offsetHeight || 280;
+      const popW = popEl.offsetWidth || 308;
+      const popH = popEl.offsetHeight || 320;
       const gap = 8;
       const pad = 8;
 
@@ -373,20 +450,19 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
   return (
     <div
-      style={{ containerType: 'size' }}
-      className="flex-1 w-full h-full flex items-center justify-center p-[4px] sm:p-[6px] overflow-hidden relative"
+      className="board-outer-box flex-1 lg:flex-none w-full lg:w-auto h-full lg:h-auto flex items-center justify-center p-[4px] sm:p-[6px] lg:px-[54px] xl:px-[58px] lg:py-[26px] overflow-hidden lg:overflow-visible relative"
     >
       {/* Обёртка квадратной доски 11×11 — адаптивная под телефоны и десктопы с местом под внешние плашки цен */}
       <div
         ref={boardWrapRef}
         className="board-square-wrap relative shrink-0"
       >
-        {/* Круглая кнопка выхода справа сверху у угла Тюрьмы (1:1 референс) */}
+        {/* Круглая кнопка выхода справа сверху у угла Тюрьмы */}
         <button
           data-testid="board-leave-btn"
           onClick={onLeaveRoom}
           title="Покинуть комнату"
-          className="absolute -top-[18px] -right-[18px] sm:-top-[24px] sm:-right-[24px] w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#26272d] hover:bg-rose-600 text-neutral-300 hover:text-white text-[10px] sm:text-xs font-bold flex items-center justify-center shadow-md transition cursor-pointer z-40"
+          className="absolute -top-[18px] -right-[18px] sm:-top-[24px] sm:-right-[24px] w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#12151F]/95 backdrop-blur-md border border-white/15 hover:border-[#F43F5E] hover:bg-[#F43F5E] text-neutral-300 hover:text-white text-[10px] sm:text-xs font-bold flex items-center justify-center shadow-[0_6px_18px_rgba(0,0,0,0.75)] transition cursor-pointer z-40"
         >
           ✕
         </button>
@@ -398,7 +474,9 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             gridTemplateColumns: 'minmax(0, 1.65fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.65fr)',
             gridTemplateRows: 'minmax(0, 1.65fr) repeat(9, minmax(0, 1fr)) minmax(0, 1.65fr)',
           }}
-          className="w-full h-full grid gap-[1px] sm:gap-[2px] bg-[#18191d] rounded-[12px] sm:rounded-[18px] shadow-[0_20px_60px_rgba(0,0,0,0.65)] relative overflow-visible"
+          className={`w-full h-full grid gap-[1.5px] sm:gap-[2.5px] bg-[#0A0C11] p-[1.5px] sm:p-[2px] rounded-[12px] sm:rounded-[18px] ring-1 ring-[#E5B869]/22 shadow-[0_30px_90px_rgba(0,0,0,0.9),0_0_65px_rgba(229,184,105,0.06)] relative overflow-visible transition-transform ${
+            boardShake ? 'animate-board-shake' : ''
+          } ${policeFlash ? 'animate-police-flash' : ''}`}
         >
           {BOARD_CELLS.map((def) => {
             const pos = getCellGridPosition(def.id);
@@ -470,10 +548,10 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             );
             if (retro) {
               if (def.type === 'JACKPOT') displayShortName = 'Парк отдыха';
-              else if (def.type === 'PORTAL') displayShortName = 'Бонус +1.5k';
+              else if (def.type === 'PORTAL') displayShortName = 'Бонус +$1 500';
               else if (def.type === 'CHANCE') {
                 const isBon = def.id === 2 || def.id === 22;
-                displayShortName = isBon ? '+1.000k' : '-1.000k';
+                displayShortName = isBon ? '+$1 000' : '-$1 000';
               }
             } else if (roomState.settings.russianRoulette && def.type === 'JACKPOT') {
               displayShortName = 'Рулетка';
@@ -482,41 +560,100 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             // Скругление только на 4 внешних углах доски
             const cornerRadiusClass =
               def.id === 0
-                ? 'rounded-tl-[10px] sm:rounded-tl-[16px]'
+                ? 'rounded-tl-[10px] sm:rounded-tl-[15px]'
                 : def.id === 10
-                ? 'rounded-tr-[10px] sm:rounded-tr-[16px]'
+                ? 'rounded-tr-[10px] sm:rounded-tr-[15px]'
                 : def.id === 20
-                ? 'rounded-br-[10px] sm:rounded-br-[16px]'
+                ? 'rounded-br-[10px] sm:rounded-br-[15px]'
                 : def.id === 30
-                ? 'rounded-bl-[10px] sm:rounded-bl-[16px]'
-                : '';
+                ? 'rounded-bl-[10px] sm:rounded-bl-[15px]'
+                : 'rounded-[3px] sm:rounded-[4px]';
 
-            // Полная заливка купленной клетки в стиле Monopoly One (логотип и текст остаются чёткими поверх заливки)
+            const isGoldCorner =
+              def.id === 0 || (def.id === 20 && !roomState.settings.russianRoulette);
+            const isCarmineCorner =
+              def.id === 10 || def.id === 30 || (def.id === 20 && !!roomState.settings.russianRoulette);
+            const isDangerSector = def.type === 'TAX';
+            const isPortalSector = def.type === 'PORTAL';
+            const isTransportSector = !owner && def.type === 'CAR';
+            const isUtilitySector = !owner && def.type === 'IT_UTILITY';
+            const isChanceSector = def.type === 'CHANCE';
+
+            // Тёмный графит #13161F вместо белого + благородный тинт владельца и единая подсветка спец-активов
             const cellBgStyle: React.CSSProperties = {
               gridRow: pos.row,
               gridColumn: pos.col,
             };
             if (owner) {
               if (rt?.isMortgaged) {
-                cellBgStyle.background = `repeating-linear-gradient(-45deg, color-mix(in srgb, ${owner.color} 42%, #cbd5e1), color-mix(in srgb, ${owner.color} 42%, #cbd5e1) 6px, #e2e8f0 6px, #e2e8f0 12px)`;
+                cellBgStyle.background = `repeating-linear-gradient(-45deg, color-mix(in srgb, ${owner.color} 22%, #0e1017), color-mix(in srgb, ${owner.color} 22%, #0e1017) 6px, #161a26 6px, #161a26 12px)`;
               } else {
-                cellBgStyle.backgroundColor = `color-mix(in srgb, ${owner.color} 56%, #ffffff)`;
+                cellBgStyle.background = `linear-gradient(165deg, color-mix(in srgb, ${owner.color} 34%, #151924) 0%, color-mix(in srgb, ${owner.color} 16%, #0e1118) 100%)`;
+                cellBgStyle.boxShadow = `inset 0 0 18px color-mix(in srgb, ${owner.color} 26%, transparent), inset 0 1px 0 rgba(255,255,255,0.14)`;
               }
-            } else {
-              cellBgStyle.backgroundColor = '#ffffff';
+            } else if (isGoldCorner) {
+              cellBgStyle.background =
+                'radial-gradient(circle at 50% 48%, rgba(229, 184, 105, 0.16) 0%, #151823 66%, #0d0f16 100%)';
+            } else if (isCarmineCorner) {
+              cellBgStyle.background =
+                'radial-gradient(circle at 50% 48%, rgba(244, 63, 94, 0.17) 0%, #171420 66%, #0d0f16 100%)';
+            } else if (isChanceSector) {
+              cellBgStyle.background =
+                'radial-gradient(circle at 50% 42%, rgba(16, 185, 129, 0.2) 0%, #101918 68%, #0f131b 100%)';
+            } else if (isDangerSector) {
+              cellBgStyle.background =
+                'radial-gradient(circle at 50% 42%, rgba(244, 63, 94, 0.2) 0%, #1b1219 68%, #11131c 100%)';
+            } else if (isPortalSector) {
+              cellBgStyle.background =
+                'radial-gradient(circle at 50% 42%, rgba(168, 85, 247, 0.24) 0%, #171226 68%, #0f121c 100%)';
+            } else if (isTransportSector) {
+              cellBgStyle.background =
+                'radial-gradient(circle at 50% 42%, rgba(100, 116, 139, 0.22) 0%, #141923 68%, #10131c 100%)';
+            } else if (isUtilitySector) {
+              cellBgStyle.background =
+                'radial-gradient(circle at 50% 42%, rgba(20, 184, 166, 0.2) 0%, #101c1e 68%, #10131c 100%)';
             }
 
-            // Позиционирование внешней плашки цены/ренты по 4 сторонам (горизонтальный текст везде для лёгкого чтения)
+            const medallionGlowHex = owner
+              ? owner.color
+              : group?.accentHex ??
+                (isChanceSector
+                  ? '#10B981'
+                  : isDangerSector
+                  ? '#F43F5E'
+                  : isPortalSector
+                  ? '#A855F7'
+                  : '#E5B869');
+
+            const cellSurfaceBorderClass = owner
+              ? 'border border-white/15 border-t-white/25'
+              : isGoldCorner
+              ? 'border border-[#E5B869]/45 shadow-[inset_0_1px_0_rgba(243,208,130,0.25)]'
+              : isCarmineCorner
+              ? 'border border-[#F43F5E]/45 shadow-[inset_0_1px_0_rgba(244,63,94,0.22)]'
+              : isChanceSector
+              ? 'border border-[#10B981]/30 border-t-[#6EE7B7]/25 hover:brightness-110'
+              : isDangerSector
+              ? 'border border-[#F43F5E]/35 border-t-[#FDA4AF]/25 hover:brightness-110'
+              : isPortalSector
+              ? 'border border-[#A855F7]/40 border-t-[#67E8F9]/30 hover:brightness-110'
+              : isTransportSector
+              ? 'border border-[#64748B]/40 border-t-[#CBD5E1]/25 hover:brightness-110'
+              : isUtilitySector
+              ? 'border border-[#14B8A6]/38 border-t-[#5EEAD4]/25 hover:brightness-110'
+              : 'bg-[#13161F] hover:bg-[#1A1E2B] border border-[#222736] border-t-white/10';
+
+            // Позиционирование внешней плашки цены/ренты по 4 сторонам (LED-капсулы с JetBrains Mono)
             const outerTabPosClass =
               pos.side === 'top'
-                ? '-top-[17px] sm:-top-[23px] left-0 right-0 h-[16px] sm:h-[22px] rounded-t-[4px] sm:rounded-t-[6px]'
+                ? '-top-[17px] sm:-top-[23px] left-[1px] right-[1px] h-[16px] sm:h-[22px] rounded-t-[5px] sm:rounded-t-[7px]'
                 : pos.side === 'bottom'
-                ? '-bottom-[17px] sm:-bottom-[23px] left-0 right-0 h-[16px] sm:h-[22px] rounded-b-[4px] sm:rounded-b-[6px]'
+                ? '-bottom-[17px] sm:-bottom-[23px] left-[1px] right-[1px] h-[16px] sm:h-[22px] rounded-b-[5px] sm:rounded-b-[7px]'
                 : pos.side === 'left'
-                ? '-left-[27px] sm:-left-[49px] xl:-left-[53px] top-0 bottom-0 w-[26px] sm:w-[48px] xl:w-[52px] rounded-l-[4px] sm:rounded-l-[6px]'
-                : '-right-[27px] sm:-right-[49px] xl:-right-[53px] top-0 bottom-0 w-[26px] sm:w-[48px] xl:w-[52px] rounded-r-[4px] sm:rounded-r-[6px]';
+                ? '-left-[27px] sm:-left-[49px] xl:-left-[53px] top-[1px] bottom-[1px] w-[26px] sm:w-[48px] xl:w-[52px] rounded-l-[5px] sm:rounded-l-[7px]'
+                : '-right-[27px] sm:-right-[49px] xl:-right-[53px] top-[1px] bottom-[1px] w-[26px] sm:w-[48px] xl:w-[52px] rounded-r-[5px] sm:rounded-r-[7px]';
 
-            // Позиционирование звёзд филиалов на внутренней границе клетки, повернутой к чату (как в Monopoly One)
+            // Позиционирование звёзд филиалов на внутренней границе клетки, повернутой к чату
             const branchPosClass =
               pos.side === 'top'
                 ? '-bottom-[8px] left-1/2 -translate-x-1/2 flex-row'
@@ -532,6 +669,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
               isHighlightingTargets && !isPortalCandidate && !isValidSpeedTarget;
             const isCurrentPlayerCell =
               roomState.status === 'PLAYING' && !!curPlayer && def.id === curPlayer.position;
+            const isHoveredGroup = Boolean(hoveredGroupId && group?.id === hoveredGroupId);
 
             return (
               <div
@@ -539,8 +677,10 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 data-cell-id={def.id}
                 style={cellBgStyle}
                 onClick={() => handleCellClick(def.id)}
+                onMouseEnter={() => group && setHoveredGroupId(group.id)}
+                onMouseLeave={() => group && setHoveredGroupId((cur) => (cur === group.id ? null : cur))}
                 title={displayShortName}
-                className={`relative min-w-0 min-h-0 select-none cursor-pointer transition-all duration-200 overflow-visible ${cornerRadiusClass} ${
+                className={`relative min-w-0 min-h-0 select-none cursor-pointer transition-all duration-200 overflow-visible ${cornerRadiusClass} ${cellSurfaceBorderClass} ${
                   tradeDraft.open && !isTradableInDraft
                     ? 'opacity-30 brightness-75'
                     : activeTr && !isTradeGive && !isTradeReceive
@@ -550,36 +690,59 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     : ''
                 } ${
                   isValidSpeedTarget
-                    ? 'ring-[4px] ring-fuchsia-400 shadow-[0_0_26px_rgba(232,121,249,0.95),inset_0_0_18px_rgba(217,70,239,0.5)] scale-[1.04] z-30'
+                    ? 'ring-[3px] ring-fuchsia-400 shadow-[0_0_26px_rgba(232,121,249,0.9),inset_0_0_18px_rgba(217,70,239,0.45)] scale-[1.04] z-30'
                     : isChoosingPortalTarget && isPortalCandidate
                     ? portalHighlightSet.size <= 8
-                      ? 'ring-[4px] ring-cyan-400 shadow-[0_0_26px_rgba(34,211,238,0.95),inset_0_0_18px_rgba(6,182,212,0.5)] scale-[1.04] z-30'
-                      : 'ring-2 ring-cyan-400/90 shadow-[inset_0_0_12px_rgba(6,182,212,0.4)] hover:scale-[1.06] hover:z-30 z-10'
+                      ? 'ring-[3px] ring-cyan-400 shadow-[0_0_26px_rgba(34,211,238,0.9),inset_0_0_18px_rgba(6,182,212,0.45)] scale-[1.04] z-30'
+                      : 'ring-2 ring-cyan-400/90 shadow-[inset_0_0_12px_rgba(6,182,212,0.4)] hover:scale-[1.05] hover:z-30 z-10'
                     : isTradeGive
-                    ? 'ring-[4px] ring-rose-400 shadow-[0_0_24px_rgba(244,63,94,0.95)] z-30 scale-[1.05]'
+                    ? 'ring-[3px] ring-[#F43F5E] shadow-[0_0_24px_rgba(244,63,94,0.9)] z-30 scale-[1.05]'
                     : isTradeReceive
-                    ? 'ring-[4px] ring-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.95)] z-30 scale-[1.05]'
+                    ? 'ring-[3px] ring-[#10B981] shadow-[0_0_24px_rgba(16,185,129,0.9)] z-30 scale-[1.05]'
                     : isSelected
-                    ? 'ring-[3.5px] ring-amber-400 shadow-[0_14px_28px_rgba(0,0,0,0.65),0_0_22px_rgba(251,191,36,0.85)] z-30 scale-[1.07] -translate-y-1'
+                    ? 'ring-2 ring-[#E5B869] shadow-[0_0_24px_rgba(229,184,105,0.48),0_14px_28px_rgba(0,0,0,0.8)] z-30 scale-[1.06] -translate-y-1'
+                    : isHoveredGroup
+                    ? 'ring-2 ring-[#E5B869]/70 shadow-[0_0_16px_rgba(229,184,105,0.3)] z-20 brightness-110'
                     : isCurrentPlayerCell
-                    ? 'ring-2 ring-white/90 shadow-[0_0_16px_rgba(255,255,255,0.55)] z-20 hover:scale-[1.03] hover:-translate-y-0.5'
+                    ? 'ring-2 ring-[#E5B869] shadow-[0_0_20px_rgba(229,184,105,0.35)] z-20 hover:scale-[1.03] hover:-translate-y-0.5'
                     : rt && rt.branches > 0
-                    ? 'z-20 hover:scale-[1.03] hover:-translate-y-0.5 hover:shadow-[0_8px_18px_rgba(0,0,0,0.4)] hover:brightness-95'
-                    : 'hover:scale-[1.03] hover:-translate-y-0.5 hover:z-20 hover:shadow-[0_8px_18px_rgba(0,0,0,0.4)] hover:brightness-95'
+                    ? 'z-20 hover:scale-[1.03] hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(0,0,0,0.65)]'
+                    : 'hover:scale-[1.03] hover:-translate-y-0.5 hover:z-20 hover:shadow-[0_10px_22px_rgba(0,0,0,0.65)]'
                 }`}
               >
-                {/* Полоска цвета отрасли на купленной клетке, чтобы видеть монополию */}
-                {owner && group && pos.side !== 'corner' && (
+                {/* Чёткий неоновый маркер владельца на внутренней грани купленной клетки */}
+                {owner && pos.side !== 'corner' && (
                   <div
-                    style={{ backgroundColor: group.accentHex }}
+                    style={{
+                      backgroundColor: owner.color,
+                      boxShadow: `0 0 10px ${owner.color}`,
+                    }}
                     className={`pointer-events-none absolute z-10 ${
                       pos.side === 'top'
-                        ? 'top-0 left-0 right-0 h-[3px]'
-                        : pos.side === 'bottom'
                         ? 'bottom-0 left-0 right-0 h-[3px]'
+                        : pos.side === 'bottom'
+                        ? 'top-0 left-0 right-0 h-[3px]'
                         : pos.side === 'left'
-                        ? 'left-0 top-0 bottom-0 w-[3px]'
-                        : 'right-0 top-0 bottom-0 w-[3px]'
+                        ? 'right-0 top-0 bottom-0 w-[3px]'
+                        : 'left-0 top-0 bottom-0 w-[3px]'
+                    }`}
+                  />
+                )}
+                {/* Тонкий неоновый индикатор монополии со стороны плашки */}
+                {group && pos.side !== 'corner' && (
+                  <div
+                    style={{
+                      backgroundColor: group.accentHex,
+                      boxShadow: `0 0 8px ${group.accentHex}88`,
+                    }}
+                    className={`pointer-events-none absolute z-10 opacity-90 ${
+                      pos.side === 'top'
+                        ? 'top-0 left-1 right-1 h-[2px] rounded-full'
+                        : pos.side === 'bottom'
+                        ? 'bottom-0 left-1 right-1 h-[2px] rounded-full'
+                        : pos.side === 'left'
+                        ? 'left-0 top-1 bottom-1 w-[2px] rounded-full'
+                        : 'right-0 top-1 bottom-1 w-[2px] rounded-full'
                     }`}
                   />
                 )}
@@ -604,46 +767,66 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     )}
                   </>
                 )}
-                {/* Внешняя цветная плашка цены (свободно) или ренты (куплено) */}
-                {buyable && group && outerTabText && (
-                  <div
-                    key={`${def.id}_${outerTabText}`}
-                    style={{
-                      backgroundColor: rt?.isMortgaged
-                        ? '#52525b'
-                        : owner
-                        ? owner.color
-                        : group.accentHex,
-                      textShadow: '0 1px 2px rgba(0,0,0,0.85), 0 0 1px rgba(0,0,0,0.9)',
-                    }}
-                    className={`pointer-events-none absolute ${outerTabPosClass} flex items-center justify-center text-[8px] sm:text-[11px] xl:text-[12.5px] font-black text-white tracking-normal tabular-nums leading-none whitespace-nowrap border border-black/25 shadow-md animate-tab-flip`}
-                  >
-                    {outerTabText}
-                  </div>
-                )}
+                {/* Внешняя глянцевая LED-капсула цены (свободно) или ренты (куплено) */}
+                {buyable && group && outerTabText && (() => {
+                  const ledColor = rt?.isMortgaged
+                    ? '#3f3f46'
+                    : owner
+                    ? owner.color
+                    : group.accentHex;
+                  return (
+                    <div
+                      key={`${def.id}_${outerTabText}`}
+                      title={
+                        rt?.isMortgaged
+                          ? `Заложено (${rt.mortgageRoundsLeft ?? '?'}р)`
+                          : owner
+                          ? `Владелец: ${owner.name} · Рента: ${outerTabText}`
+                          : `Свободно · Цена покупки: ${outerTabText}`
+                      }
+                      style={{
+                        background: rt?.isMortgaged
+                          ? 'linear-gradient(180deg, #3f3f46 0%, #27272a 100%)'
+                          : `linear-gradient(180deg, color-mix(in srgb, ${ledColor} 88%, #ffffff) 0%, color-mix(in srgb, ${ledColor} 76%, #07090e) 100%)`,
+                        boxShadow: rt?.isMortgaged
+                          ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 2px 6px rgba(0,0,0,0.6)'
+                          : `0 0 14px ${ledColor}55, 0 3px 8px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.42)`,
+                        textShadow: '0 1px 2px rgba(0,0,0,0.92), 0 0 2px rgba(0,0,0,0.95)',
+                      }}
+                      className={`pointer-events-none absolute ${outerTabPosClass} flex items-center justify-center gap-0.5 font-mono-num text-[7.5px] sm:text-[10.5px] xl:text-[11.5px] font-bold text-[#F8FAFC] tracking-tight leading-none whitespace-nowrap animate-tab-flip ${
+                        owner && !rt?.isMortgaged
+                          ? 'border border-white/65 ring-1 ring-black/40'
+                          : 'border border-white/25 opacity-95'
+                      }`}
+                    >
+                      <span>{outerTabText}</span>
+                    </div>
+                  );
+                })()}
 
-                {/* Звёздочки филиалов (1..4 белые ★) или золотая ★ за полную застройку, повернутые к чату */}
+                {/* Звёзды/шевроны филиалов (1..4 яркие ★ или золотая корона-звезда ★ за полную застройку) */}
                 {rt && rt.branches > 0 && (
                   <div
-                    className={`pointer-events-none absolute ${branchPosClass} flex items-center justify-center gap-[1px] z-30`}
+                    className={`pointer-events-none absolute ${branchPosClass} flex items-center justify-center gap-[1px] px-1 py-[0.5px] rounded-full bg-[#090B10]/90 border border-[#E5B869]/55 shadow-[0_2px_8px_rgba(0,0,0,0.9),0_0_10px_rgba(229,184,105,0.35)] z-30`}
                   >
                     {rt.branches >= 5 ? (
                       <span
+                        key={`${def.id}-star-5`}
                         style={{
-                          textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.95)',
+                          textShadow: '0 0 8px rgba(243,208,130,0.9), 0 1px 2px rgba(0,0,0,0.95)',
                         }}
-                        className="text-[12px] sm:text-[15px] xl:text-[17px] leading-none text-amber-400 font-black"
+                        className="text-[11px] sm:text-[14px] xl:text-[15.5px] leading-none text-[#F3D082] font-black animate-pop-in"
                       >
                         ★
                       </span>
                     ) : (
                       Array.from({ length: rt.branches }).map((_, i) => (
                         <span
-                          key={i}
+                          key={`${def.id}-star-${i}`}
                           style={{
-                            textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.95)',
+                            textShadow: '0 0 6px rgba(229,184,105,0.65), 0 1px 2px rgba(0,0,0,0.95)',
                           }}
-                          className="text-[9px] sm:text-[11px] xl:text-[13px] leading-none text-white font-black"
+                          className="text-[8px] sm:text-[10px] xl:text-[11.5px] leading-none text-[#E5B869] font-black animate-pop-in"
                         >
                           ★
                         </span>
@@ -655,7 +838,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 {/* Бейдж залога прямо на клетке */}
                 {rt?.isMortgaged && (
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
-                    <span className="bg-neutral-900/85 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow">
+                    <span className="bg-[#090B10]/90 backdrop-blur-sm border border-[#F43F5E]/45 text-[#FDA4AF] font-mono-num text-[8.5px] font-bold px-1.5 py-0.5 rounded shadow-lg">
                       🔒 {rt.mortgageRoundsLeft ? `${rt.mortgageRoundsLeft}р` : 'ЗАЛОГ'}
                     </span>
                   </div>
@@ -667,7 +850,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     data-testid="trade-cell-give"
                     className="pointer-events-none absolute inset-0 flex items-center justify-center z-20"
                   >
-                    <span className="px-1.5 py-0.5 rounded-md bg-rose-600/95 text-white text-[8px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
+                    <span className="px-1.5 py-0.5 rounded-md bg-[#F43F5E]/95 text-white text-[8px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
                       {tradeGiveLabel}
                     </span>
                   </div>
@@ -677,57 +860,87 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     data-testid="trade-cell-receive"
                     className="pointer-events-none absolute inset-0 flex items-center justify-center z-20"
                   >
-                    <span className="px-1.5 py-0.5 rounded-md bg-emerald-600/95 text-white text-[8px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
+                    <span className="px-1.5 py-0.5 rounded-md bg-[#10B981]/95 text-white text-[8px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
                       {tradeReceiveLabel}
                     </span>
                   </div>
                 )}
 
-                {/* Внутренняя иллюстрация и подпись карточки */}
+                {/* Внутренняя иллюстрация в тёмном медальоне и контрастная подпись карточки */}
                 {pos.side === 'corner' ? (
                   <div
-                    className={`w-full h-full p-1 flex items-center justify-center overflow-hidden ${cornerRadiusClass}`}
+                    className={`w-full h-full p-0.5 sm:p-1 flex items-center justify-center overflow-hidden ${cornerRadiusClass}`}
                   >
-                    {def.id === 0 ? (
-                      <img
-                        src="/art/corner_start.png"
-                        alt={displayShortName}
-                        className="w-full h-full object-contain mix-blend-multiply"
-                      />
-                    ) : def.id === 30 ? (
-                      <img
-                        src="/art/corner_police.png"
-                        alt={displayShortName}
-                        className="w-full h-full object-contain mix-blend-multiply"
-                      />
-                    ) : (
-                      <CellArtwork
-                        cellId={def.id}
-                        side="corner"
-                        censored={censored}
-                        russianRoulette={roomState.settings.russianRoulette}
-                        className="w-full h-full"
-                      />
-                    )}
+                    <CellArtwork
+                      cellId={def.id}
+                      side="corner"
+                      censored={censored}
+                      russianRoulette={roomState.settings.russianRoulette}
+                      className="w-full h-full drop-shadow-[0_4px_10px_rgba(0,0,0,0.75)]"
+                    />
                   </div>
                 ) : (
-                  /* Единый вертикальный стиль для всех 36 боковых карточек (покупаемых и спецполей) */
-                  <div className="w-full h-full px-0.5 py-0.5 flex flex-col items-center justify-between overflow-hidden min-w-0 min-h-0">
-                    <div className="flex-1 min-h-0 min-w-0 w-full flex items-center justify-center p-0.5 overflow-hidden">
-                      <CellArtwork
-                        cellId={def.id}
-                        side={pos.side}
-                        censored={censored}
-                        className={
-                          pos.side === 'left' || pos.side === 'right'
-                            ? 'max-w-full max-h-full w-[62%] h-[88%]'
-                            : 'max-w-full max-h-full w-[82%] h-[88%]'
-                        }
-                      />
+                  /* Единый Dark Luxury слот для всех 36 боковых карточек */
+                  <div className="w-full h-full p-[2px] sm:p-[3px] flex flex-col items-center justify-between gap-[1.5px] overflow-hidden min-w-0 min-h-0">
+                    <div
+                      style={{
+                        boxShadow: `inset 0 2px 6px rgba(0,0,0,0.72), 0 1px 0 rgba(255,255,255,0.05)`,
+                        background: `radial-gradient(circle at 50% 50%, color-mix(in srgb, ${medallionGlowHex} 18%, #0c0e15) 0%, #090b10 85%)`,
+                      }}
+                      className="flex-1 min-h-0 min-w-0 w-full rounded-[4px] sm:rounded-[6px] border border-white/[0.06] flex items-center justify-center p-0.5 overflow-hidden"
+                    >
+                      <div
+                        style={{
+                          filter: `drop-shadow(0 2px 5px ${medallionGlowHex}55)`,
+                        }}
+                        className="w-full h-full flex items-center justify-center"
+                      >
+                        <CellArtwork
+                          cellId={def.id}
+                          side={pos.side}
+                          censored={censored}
+                          className={
+                            pos.side === 'left' || pos.side === 'right'
+                              ? 'max-w-full max-h-full w-[72%] h-[92%]'
+                              : 'max-w-full max-h-full w-[86%] h-[92%]'
+                          }
+                        />
+                      </div>
                     </div>
-                    <span className="shrink-0 w-full text-center text-[6px] sm:text-[8.5px] xl:text-[9.5px] font-extrabold text-neutral-900 leading-[1.05] pb-[1px] px-0.5 break-words line-clamp-2">
-                      {displayShortName}
-                    </span>
+                    {(() => {
+                      const words = displayShortName.split(/\s+/);
+                      const maxWordLen = Math.max(...words.map((w) => w.length));
+                      const nameLen = displayShortName.length;
+                      const isVerticalNarrow = pos.side === 'top' || pos.side === 'bottom';
+                      const labelSizeClass = isVerticalNarrow
+                        ? maxWordLen >= 12
+                          ? 'text-[4.8px] sm:text-[6.4px] xl:text-[7.5px] leading-[1.06] tracking-[-0.03em]'
+                          : nameLen >= 19 || maxWordLen >= 9
+                          ? 'text-[5.2px] sm:text-[7.1px] xl:text-[8.2px] leading-[1.08] tracking-[-0.02em]'
+                          : 'text-[5.7px] sm:text-[7.9px] xl:text-[9.1px] leading-[1.08] tracking-[-0.015em]'
+                        : nameLen >= 20
+                        ? 'text-[5.4px] sm:text-[7.5px] xl:text-[8.7px] leading-[1.06] tracking-[-0.015em]'
+                        : 'text-[5.8px] sm:text-[8.1px] xl:text-[9.4px] leading-[1.08] tracking-[-0.01em]';
+
+                      return (
+                        <div className="shrink-0 w-full rounded-[3px] bg-[#080A0F]/88 border-t border-white/[0.07] py-[1px] sm:py-[1.5px] px-[1.5px] flex items-center justify-center">
+                          <span
+                            style={{ textShadow: '0 1px 2px rgba(0,0,0,0.95)' }}
+                            className={`w-full text-center font-semibold whitespace-normal break-words ${labelSizeClass} ${
+                              isDangerSector
+                                ? 'text-[#FDA4AF]'
+                                : isChanceSector
+                                ? 'text-[#A7F3D0]'
+                                : isPortalSector
+                                ? 'text-[#E9D5FF]'
+                                : 'text-[#F1F5F9]'
+                            }`}
+                          >
+                            {displayShortName}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -744,6 +957,25 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
           currentPlayerId={curPlayer?.id}
           isPlaying={roomState.status === 'PLAYING'}
         />
+
+        {/* Летящий кэш-трансфер прямо над клеткой */}
+        {flyTransfer && (
+          <div
+            key={flyTransfer.id}
+            style={{ left: `${flyTransfer.xPct}%`, top: `${flyTransfer.yPct}%` }}
+            className="pointer-events-none absolute z-40 -translate-x-1/2"
+          >
+            <div
+              className={`animate-cash-fly px-2.5 py-1 rounded-full text-xs sm:text-sm font-black shadow-2xl border backdrop-blur-md whitespace-nowrap ${
+                flyTransfer.isPositive
+                  ? 'bg-emerald-500/90 text-white border-emerald-200/70'
+                  : 'bg-rose-600/90 text-white border-rose-200/70'
+              }`}
+            >
+              {flyTransfer.label}
+            </div>
+          </div>
+        )}
 
         {/* Monopoly One тёмный поповер карточки при клике на клетку */}
         {isPopoverOpen &&
@@ -777,14 +1009,19 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             const catBadge = selectedGroup
               ? getCategoryBadge(selectedGroup.id, selectedDef.type)
               : null;
-            const bodyDescription =
+            const bodyDescription = txt(
+              selectedDef.description || selectedDef.subtitle,
+              selectedDef.cleanDescription || selectedDef.cleanSubtitle,
+              censored
+            );
+            const mechanicsHint =
               selectedDef.type === 'CAR'
-                ? 'Аренда зависит от количества Автомобилей, которыми вы владеете.'
+                ? 'Аренда растёт от количества авто в гараже.'
                 : selectedDef.type === 'IT_UTILITY'
-                ? 'Аренда зависит от суммы чисел на кубиках и от количества IT-компаний, которыми вы владеете.'
+                ? 'Рента = сумма на кубиках × множитель.'
                 : selectedDef.type === 'PROPERTY'
-                ? 'Отрасль приносит повышенную ренту при сборе монополии и строительстве филиалов.'
-                : specialMeta.description;
+                ? 'Соберите всю группу, чтобы строить филиалы ★.'
+                : null;
 
             const rents = selectedDef.rents ?? [];
             let activeRentIdx = -1;
@@ -871,66 +1108,173 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                       popoverPos?.cellId === selectedDef.id
                         ? 'visible'
                         : 'hidden',
+                    boxShadow: `0 32px 80px rgba(0,0,0,0.92), 0 0 34px ${headerHex}24, inset 0 1px 0 rgba(255,255,255,0.1)`,
                   }}
-                  className="absolute w-[252px] max-sm:!fixed max-sm:!left-1/2 max-sm:!top-1/2 max-sm:!-translate-x-1/2 max-sm:!-translate-y-1/2 max-sm:w-[min(92vw,310px)] max-sm:max-h-[82dvh] max-sm:overflow-y-auto bg-[#222327] text-[#e4e4e7] rounded-[14px] shadow-[0_24px_60px_rgba(0,0,0,0.85)] border border-white/10 overflow-hidden z-40 max-sm:z-50"
+                  className="absolute w-[308px] max-sm:!fixed max-sm:!left-1/2 max-sm:!top-1/2 max-sm:!-translate-x-1/2 max-sm:!-translate-y-1/2 max-sm:w-[min(92vw,336px)] max-sm:max-h-[84dvh] max-sm:overflow-y-auto bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.08] overflow-hidden z-40 max-sm:z-50 animate-action-card"
                 >
-                  {/* Цветная шапка карточки */}
+                  {/* Коллекционная VIP-шапка карточки с глубоким градиентом монополии, сеткой и крупным 3D-артом */}
                   <div
-                    style={{ backgroundColor: headerHex }}
-                    className="px-4 py-3 relative pr-9"
+                    style={{
+                      background: `linear-gradient(135deg, color-mix(in srgb, ${headerHex} 54%, #0f1117) 0%, #141824 66%, #0f1117 100%)`,
+                      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 24px rgba(0,0,0,0.45)`,
+                    }}
+                    className="px-4 py-3.5 relative border-b border-white/[0.08] overflow-hidden"
                   >
+                    {/* Тонкая геометрическая сетка на фоне шапки */}
+                    <svg
+                      viewBox="0 0 308 128"
+                      preserveAspectRatio="none"
+                      className="pointer-events-none absolute inset-0 w-full h-full opacity-35"
+                    >
+                      <defs>
+                        <pattern
+                          id={`pop-grid-${selectedDef.id}`}
+                          width="14"
+                          height="14"
+                          patternUnits="userSpaceOnUse"
+                        >
+                          <path
+                            d="M 14 0 L 0 0 0 14"
+                            fill="none"
+                            stroke={headerHex}
+                            strokeOpacity="0.28"
+                            strokeWidth="0.6"
+                          />
+                        </pattern>
+                      </defs>
+                      <rect width="308" height="128" fill={`url(#pop-grid-${selectedDef.id})`} />
+                      <circle
+                        cx="264"
+                        cy="26"
+                        r="54"
+                        fill="none"
+                        stroke="#E5B869"
+                        strokeOpacity="0.2"
+                        strokeDasharray="3 3"
+                      />
+                    </svg>
+
                     <button
                       type="button"
                       onClick={() => onSelectCell(null)}
                       aria-label="Закрыть карточку"
-                      className="sm:hidden absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-black/30 hover:bg-black/50 text-white text-xs font-bold flex items-center justify-center cursor-pointer"
+                      className="absolute top-2.5 right-2.5 z-20 w-7 h-7 rounded-full bg-[#090B10]/70 hover:bg-[#F43F5E] border border-white/15 text-neutral-200 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer transition"
                     >
                       ✕
                     </button>
-                    {catBadge ? (
-                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/25 border border-white/25 text-[10.5px] font-bold text-white/95 mb-1.5 shadow-xs">
-                        <span>{catBadge.icon}</span>
-                        <span>{catBadge.label}</span>
-                        <span className="opacity-60">•</span>
-                        <span>{headerSubtitle}</span>
+
+                    <div className="relative z-10">
+                      <div className="pr-8 mb-2.5">
+                        {catBadge ? (
+                          <div className="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-xl bg-gradient-to-r from-[#0A0C12]/90 to-[#161A26]/90 border border-[#E5B869]/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] text-[10px] font-bold text-[#F3D082] leading-tight whitespace-normal break-words">
+                            <span className="shrink-0">{catBadge.icon}</span>
+                            <span className="whitespace-normal break-words text-[#F8FAFC]">
+                              {headerSubtitle}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center max-w-full px-2.5 py-1 rounded-xl bg-[#0A0C12]/85 border border-white/15 text-[10px] text-[#E5B869] font-bold uppercase tracking-wider leading-tight whitespace-normal break-words">
+                            {headerSubtitle}
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="text-[11px] text-white/80 font-semibold uppercase tracking-wide mb-0.5">
-                        {headerSubtitle}
+
+                      <div className="flex items-center gap-3">
+                        {/* Крупная детализированная Dark Luxury 3D-витрина иллюстрации */}
+                        <div
+                          style={{
+                            borderColor: `${headerHex}80`,
+                            boxShadow: `0 0 24px ${headerHex}42, 0 10px 22px rgba(0,0,0,0.78), inset 0 2px 8px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.18)`,
+                            background: `radial-gradient(circle at 50% 45%, color-mix(in srgb, ${headerHex} 28%, #151a28) 0%, #090B11 80%)`,
+                          }}
+                          className="relative w-[82px] h-[82px] rounded-2xl border p-1.5 shrink-0 flex items-center justify-center overflow-hidden"
+                        >
+                          <div className="pointer-events-none absolute inset-x-2 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+                          <div
+                            style={{ filter: `drop-shadow(0 4px 10px ${headerHex}66)` }}
+                            className="w-full h-full flex items-center justify-center"
+                          >
+                            <CellArtwork
+                              cellId={selectedDef.id}
+                              side="corner"
+                              censored={censored}
+                              russianRoulette={roomState.settings.russianRoulette}
+                              className="w-full h-full"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div
+                            style={{ textShadow: '0 2px 6px rgba(0,0,0,0.65)' }}
+                            className="font-display text-[14.5px] font-bold text-[#F8FAFC] leading-[1.22] whitespace-normal break-words"
+                          >
+                            {headerTitle}
+                          </div>
+                          {selectedBuyable && selectedDef.price !== undefined && (
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#090B10]/80 border border-white/10 text-[10.5px] font-semibold text-[#CBD5E1]">
+                              <span>Цена:</span>
+                              <span className="font-mono-num font-bold text-[#F3D082]">
+                                ${formatDollar(selectedDef.price)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    <div className="text-[15px] font-bold text-white leading-tight drop-shadow-xs">
-                      {headerTitle}
                     </div>
                   </div>
 
-                  {/* Тело карточки */}
+                  {/* Тело VIP-актива */}
                   <div className="px-4 py-3.5 text-[12px] space-y-3">
-                    <p className="text-[#a1a1aa] leading-[1.35]">
-                      {bodyDescription}
-                    </p>
+                    {/* Закрытый инсайд / мемная цитата */}
+                    <div
+                      style={{ borderLeftColor: '#E5B869' }}
+                      className="relative overflow-hidden rounded-xl bg-[#0A0C12]/95 border border-white/[0.06] border-l-[3px] px-3 py-2.5 text-[11.5px] text-[#E2E8F0] leading-[1.45] shadow-inner"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none select-none absolute -top-2 right-2 font-serif text-[44px] leading-none text-[#E5B869]/12"
+                      >
+                        ”
+                      </span>
+                      <div className="relative z-10 italic text-[#F1F5F9]/95">
+                        «{bodyDescription}»
+                      </div>
+                      {mechanicsHint && (
+                        <div className="relative z-10 not-italic text-[10px] text-[#94A3B8] mt-2 pt-1.5 border-t border-white/[0.05] font-semibold">
+                          ⚙️ {mechanicsHint}
+                        </div>
+                      )}
+                    </div>
 
-                    {/* Таблица ренты для покупаемых полей */}
+                    {/* Швейцарская таблица ренты */}
                     {selectedDef.type === 'CAR' && (
-                      <div className="space-y-1.5 text-[#d4d4d8]">
+                      <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
                         {carLabels.map((label, idx) => {
                           const active = activeRentIdx === idx;
+                          const isTopTier = idx === carLabels.length - 1;
                           return (
                             <div
                               key={label}
-                              className={`flex items-center justify-between gap-2 ${
-                                active ? 'text-lime-400 font-bold' : ''
+                              className={`flex items-center justify-between gap-2 py-1.5 text-[11.5px] ${
+                                active
+                                  ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 shadow-[0_0_14px_rgba(16,185,129,0.18)] text-[#6EE7B7] font-bold'
+                                  : isTopTier
+                                  ? 'text-[#E5B869] font-semibold'
+                                  : 'text-[#CBD5E1]'
                               }`}
                             >
-                              <span>{label}</span>
-                              <span className="tabular-nums">
-                                <span
-                                  className={`${
-                                    active ? 'text-lime-400/75' : 'text-[#71717a]'
-                                  } mr-1`}
-                                >
-                                  $
-                                </span>
+                              <span>{isTopTier ? `${label} ★` : label}</span>
+                              <span
+                                className={`font-mono-num font-bold ${
+                                  active
+                                    ? 'text-[#6EE7B7]'
+                                    : isTopTier
+                                    ? 'text-[#E5B869]'
+                                    : 'text-[#F8FAFC]'
+                                }`}
+                              >
+                                <span className="opacity-55 mr-0.5">$</span>
                                 {formatDollar(rents[idx] ?? 0)}
                               </span>
                             </div>
@@ -940,21 +1284,34 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     )}
 
                     {selectedDef.type === 'IT_UTILITY' && (
-                      <div className="space-y-1.5 text-[#d4d4d8]">
+                      <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
                         {itLabels.map((label, idx) => {
                           const active = activeRentIdx === idx;
                           const mult = rents[idx] ?? (idx === 0 ? 100 : 250);
+                          const isTopTier = idx === 1;
                           return (
                             <div
                               key={label}
-                              className={`flex items-center justify-between gap-2 ${
-                                active ? 'text-lime-400 font-bold' : ''
+                              className={`flex items-center justify-between gap-2 py-1.5 text-[11.5px] ${
+                                active
+                                  ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 shadow-[0_0_14px_rgba(16,185,129,0.18)] text-[#6EE7B7] font-bold'
+                                  : isTopTier
+                                  ? 'text-[#E5B869] font-semibold'
+                                  : 'text-[#CBD5E1]'
                               }`}
                             >
-                              <span>{label}</span>
-                              <span className="inline-flex items-center gap-1.5 tabular-nums">
+                              <span>{isTopTier ? `${label} ★` : label}</span>
+                              <span
+                                className={`inline-flex items-center gap-1.5 font-mono-num font-bold ${
+                                  active
+                                    ? 'text-[#6EE7B7]'
+                                    : isTopTier
+                                    ? 'text-[#E5B869]'
+                                    : 'text-[#F8FAFC]'
+                                }`}
+                              >
                                 <MiniDicePair />
-                                <span>× {mult}</span>
+                                <span>×{mult}</span>
                               </span>
                             </div>
                           );
@@ -963,25 +1320,39 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     )}
 
                     {selectedDef.type === 'PROPERTY' && (
-                      <div className="space-y-1.5 text-[#d4d4d8]">
+                      <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
                         {propLabels.map((label, idx) => {
                           const active = activeRentIdx === idx;
+                          const isMonopolyRow = idx === 5;
                           return (
                             <div
                               key={label}
-                              className={`flex items-center justify-between gap-2 ${
-                                active ? 'text-lime-400 font-bold' : ''
+                              className={`flex items-center justify-between gap-2 py-1.5 text-[11.5px] ${
+                                active
+                                  ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/45 shadow-[0_0_16px_rgba(16,185,129,0.22)] text-[#6EE7B7] font-bold'
+                                  : isMonopolyRow
+                                  ? 'text-[#E5B869] font-bold'
+                                  : idx % 2 === 1
+                                  ? 'bg-white/[0.015] text-[#CBD5E1]'
+                                  : 'text-[#CBD5E1]'
                               }`}
                             >
-                              <span>{label}</span>
-                              <span className="tabular-nums">
-                                <span
-                                  className={`${
-                                    active ? 'text-lime-400/75' : 'text-[#71717a]'
-                                  } mr-1`}
-                                >
-                                  $
-                                </span>
+                              <span className="flex items-center gap-1.5">
+                                {active && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shadow-[0_0_6px_#10B981]" />
+                                )}
+                                <span>{label}</span>
+                              </span>
+                              <span
+                                className={`font-mono-num font-bold ${
+                                  active
+                                    ? 'text-[#6EE7B7]'
+                                    : isMonopolyRow
+                                    ? 'text-[#E5B869]'
+                                    : 'text-[#F8FAFC]'
+                                }`}
+                              >
+                                <span className="opacity-55 mr-0.5">$</span>
                                 {formatDollar(rents[idx] ?? 0)}
                               </span>
                             </div>
@@ -992,57 +1363,50 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
                     {/* Цены покупки / залога / выкупа / постройки */}
                     {selectedBuyable && (
-                      <>
-                        <div className="border-t border-white/10 my-2" />
-                        <div className="space-y-1.5 text-[#d4d4d8]">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[#a1a1aa]">Покупка поля</span>
-                            <span className="tabular-nums font-medium">
-                              <span className="text-[#71717a] mr-1">$</span>
-                              {formatDollar(selectedDef.price ?? 0)}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[#a1a1aa]">Залог поля</span>
-                            <span className="tabular-nums font-medium">
-                              <span className="text-[#71717a] mr-1">$</span>
-                              {formatDollar(getMortgageValue(selectedDef.id))}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[#a1a1aa]">Выкуп поля</span>
-                            <span className="tabular-nums font-medium">
-                              <span className="text-[#71717a] mr-1">$</span>
-                              {formatDollar(unmortgageCost)}
-                            </span>
-                          </div>
-                          {selectedDef.type === 'PROPERTY' && branchCostVal > 0 && (
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[#a1a1aa]">Постройка филиала</span>
-                              <span className="tabular-nums font-medium">
-                                <span className="text-[#71717a] mr-1">$</span>
-                                {formatDollar(branchCostVal)}
-                              </span>
-                            </div>
-                          )}
+                      <div className="rounded-xl bg-[#0B0D14]/55 border border-white/[0.04] px-2.5 py-1 divide-y divide-white/[0.04] text-[11.5px]">
+                        <div className="flex items-center justify-between gap-2 py-1">
+                          <span className="text-[#94A3B8]">Покупка актива</span>
+                          <span className="font-mono-num font-semibold text-[#F8FAFC]">
+                            <span className="text-[#64748B] mr-0.5">$</span>
+                            {formatDollar(selectedDef.price ?? 0)}
+                          </span>
                         </div>
-                      </>
+                        <div className="flex items-center justify-between gap-2 py-1">
+                          <span className="text-[#94A3B8]">Залог в банк</span>
+                          <span className="font-mono-num font-semibold text-[#F8FAFC]">
+                            <span className="text-[#64748B] mr-0.5">$</span>
+                            {formatDollar(getMortgageValue(selectedDef.id))}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 py-1">
+                          <span className="text-[#94A3B8]">Выкуп залога</span>
+                          <span className="font-mono-num font-semibold text-[#F8FAFC]">
+                            <span className="text-[#64748B] mr-0.5">$</span>
+                            {formatDollar(unmortgageCost)}
+                          </span>
+                        </div>
+                        {selectedDef.type === 'PROPERTY' && branchCostVal > 0 && (
+                          <div className="flex items-center justify-between gap-2 py-1">
+                            <span className="text-[#94A3B8]">Постройка филиала ★</span>
+                            <span className="font-mono-num font-semibold text-[#E5B869]">
+                              <span className="opacity-65 mr-0.5">$</span>
+                              {formatDollar(branchCostVal)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     )}
 
                     {/* Размер налога для налоговых клеток */}
                     {!selectedBuyable &&
                       selectedDef.type === 'TAX' &&
                       selectedDef.taxAmount !== undefined && (
-                        <>
-                          <div className="border-t border-white/10 my-2" />
-                          <div className="flex items-center justify-between gap-2 text-[#d4d4d8]">
-                            <span className="text-[#a1a1aa]">Размер налога</span>
-                            <span className="tabular-nums font-semibold">
-                              <span className="text-[#71717a] mr-1">$</span>
-                              {formatDollar(selectedDef.taxAmount)}
-                            </span>
-                          </div>
-                        </>
+                        <div className="rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/30 px-3 py-2 flex items-center justify-between gap-2">
+                          <span className="text-[#FDA4AF] font-semibold">Штраф / Списание</span>
+                          <span className="font-mono-num font-bold text-[#F43F5E] text-sm">
+                            -${formatDollar(selectedDef.taxAmount)}
+                          </span>
+                        </div>
                       )}
 
                     {/* Статус владельца и кнопки управления своим активом */}
@@ -1096,10 +1460,13 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                                     buildCheck?.reason ??
                                     `Построить филиал ($ ${formatDollar(branchCostVal)})`
                                   }
-                                  onClick={() => props.onBuildBranch(selectedDef.id)}
-                                  className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-600/90 hover:bg-emerald-500 text-white transition cursor-pointer disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed"
+                                  onClick={() => {
+                                    soundEngine.playBuild();
+                                    props.onBuildBranch(selectedDef.id);
+                                  }}
+                                  className="btn-emerald-3d px-2 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer"
                                 >
-                                  + Филиал
+                                  + Филиал ★
                                 </button>
                               )}
                               {selectedDef.type === 'PROPERTY' &&
@@ -1112,7 +1479,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                                       'Продать филиал (50% стоимости)'
                                     }
                                     onClick={() => props.onSellBranch(selectedDef.id)}
-                                    className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-amber-600/85 hover:bg-amber-500 text-white transition cursor-pointer disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed"
+                                    className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#E5B869]/20 hover:bg-[#E5B869]/35 border border-[#E5B869]/50 text-[#F3D082] transition cursor-pointer disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed"
                                   >
                                     - Филиал
                                   </button>
@@ -1127,14 +1494,14 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                                   )}`
                                 }
                                 onClick={() => props.onMortgage(selectedDef.id)}
-                                className={`px-2 py-1.5 rounded-lg text-[11px] font-bold leading-tight bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/75 text-amber-200 hover:text-white shadow-sm transition cursor-pointer disabled:bg-white/5 disabled:border-white/10 disabled:text-zinc-500 disabled:shadow-none disabled:cursor-not-allowed ${
+                                className={`px-2 py-1.5 rounded-lg text-[11px] font-bold leading-tight bg-[#E5B869]/15 hover:bg-[#E5B869]/28 border border-[#E5B869]/55 text-[#F3D082] hover:text-white shadow-sm transition cursor-pointer disabled:bg-white/5 disabled:border-white/10 disabled:text-zinc-500 disabled:shadow-none disabled:cursor-not-allowed ${
                                   selectedDef.type !== 'PROPERTY' ||
                                   selectedRt.branches > 0
                                     ? 'col-span-2'
                                     : ''
                                 }`}
                               >
-                                🔒 Заложить (+${formatDollar(getMortgageValue(selectedDef.id))})
+                                🔒 Заложить (<span className="font-mono-num">+${formatDollar(getMortgageValue(selectedDef.id))}</span>)
                               </button>
                             </>
                           ) : (
@@ -1150,7 +1517,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                                       )})`
                                 }
                                 onClick={() => props.onUnmortgage(selectedDef.id)}
-                                className={`px-2 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-600/90 hover:bg-emerald-500 text-white transition cursor-pointer disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed ${
+                                className={`btn-emerald-3d px-2 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                                   showAuctionBtn ? '' : 'col-span-2'
                                 }`}
                               >
