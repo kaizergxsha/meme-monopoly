@@ -1,15 +1,28 @@
+import type { TauntSoundId } from '../../shared/types.ts';
+
 const PRELOAD_SOUNDS = {
   gain: '/sounds/gain.mp3',
   spend: '/sounds/spend.mp3',
-  tauntLoh: '/sounds/taunt_loh.wav',
-  tauntLohClean: '/sounds/taunt_loh_clean.wav',
-  tauntRentRage: '/sounds/taunt_rent_rage.wav',
-  tauntRentRageClean: '/sounds/taunt_rent_rage_clean.wav',
-  tauntFiasco: '/sounds/taunt_fiasco.wav',
-  tauntGovno: '/sounds/taunt_govno.wav',
-  tauntGovnoClean: '/sounds/taunt_govno_clean.wav',
-  tauntPressF: '/sounds/taunt_press_f.wav',
+  tauntBalls: '/sounds/taunt_balls.mp3',
+  tauntMiBombo: '/sounds/taunt_mi_bombo.mp3',
+  tauntBlyat: '/sounds/taunt_blyat.mp3',
+  tauntScream: '/sounds/taunt_scream.mp3',
+  tauntBruh: '/sounds/taunt_bruh.mp3',
+  tauntLaugh: '/sounds/taunt_laugh.mp3',
+  tauntCasino: '/sounds/taunt_casino.mp3',
+  tauntGay: '/sounds/taunt_gay.mp3',
 } as const;
+
+const TAUNT_SOUND_CONFIG: Record<TauntSoundId, { url: string; phrase: string; pitch: number }> = {
+  balls: { url: PRELOAD_SOUNDS.tauntBalls, phrase: 'Большие яйца!', pitch: 0.9 },
+  mi_bombo: { url: PRELOAD_SOUNDS.tauntMiBombo, phrase: 'Ми бомбо!', pitch: 1.4 },
+  blyat: { url: PRELOAD_SOUNDS.tauntBlyat, phrase: 'Бляяять!', pitch: 1.1 },
+  scream: { url: PRELOAD_SOUNDS.tauntScream, phrase: 'Ааааа!', pitch: 1.6 },
+  bruh: { url: PRELOAD_SOUNDS.tauntBruh, phrase: 'Брух!', pitch: 0.85 },
+  laugh: { url: PRELOAD_SOUNDS.tauntLaugh, phrase: 'Ха-ха-ха!', pitch: 1.5 },
+  casino: { url: PRELOAD_SOUNDS.tauntCasino, phrase: 'Казино!', pitch: 1.2 },
+  gay: { url: PRELOAD_SOUNDS.tauntGay, phrase: 'Гей!', pitch: 0.8 },
+};
 
 function readInitialMuted(): boolean {
   try {
@@ -30,6 +43,7 @@ class SoundEngine {
   private decodingUrls = new Set<string>();
   private activeClips = new Set<HTMLAudioElement>();
   private activeSources = new Set<AudioBufferSourceNode>();
+  private stopCurrentTaunt: (() => void) | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -166,7 +180,12 @@ class SoundEngine {
     return this.ctx;
   }
 
-  private playClip(url: string, volume: number, fallback: () => void) {
+  private playClip(
+    url: string,
+    volume: number,
+    fallback: () => void,
+    onStopRegister?: (stopFn: () => void) => void
+  ) {
     if (this.muted) return;
     const clampedVol = Math.max(0, Math.min(1, volume));
 
@@ -188,6 +207,14 @@ class SoundEngine {
           src.disconnect();
           gain.disconnect();
         };
+        onStopRegister?.(() => {
+          try {
+            src.stop();
+          } catch {
+            // ignore
+          }
+          this.activeSources.delete(src);
+        });
         src.start(0);
         return;
       } catch {
@@ -207,6 +234,15 @@ class SoundEngine {
         };
         clip.addEventListener('ended', cleanup, { once: true });
         clip.addEventListener('error', cleanup, { once: true });
+        onStopRegister?.(() => {
+          try {
+            clip.pause();
+            clip.currentTime = 0;
+          } catch {
+            // ignore
+          }
+          cleanup();
+        });
 
         const p = clip.play();
         if (p && typeof p.catch === 'function') {
@@ -451,55 +487,28 @@ class SoundEngine {
     }
   }
 
-  public playTaunt(sound: 'laugh' | 'fiasco' | 'trombone' | 'rage' | 'pressf', censored = false) {
+  public playTaunt(sound: TauntSoundId, _censored = false) {
     if (this.muted) return;
-
-    if (sound === 'trombone') {
-      const url = censored ? PRELOAD_SOUNDS.tauntGovnoClean : PRELOAD_SOUNDS.tauntGovno;
-      const phrase = censored ? 'Гениальная инвестиция!' : 'Инвестировал в говно!';
-      this.playClip(url, 0.95, () => {
-        this.speakFallback(phrase, 1.7, 1.2, () => {
-          this.playSadTrombone();
-        });
-      });
-      return;
+    if (this.stopCurrentTaunt) {
+      this.stopCurrentTaunt();
+      this.stopCurrentTaunt = null;
     }
 
-    if (sound === 'laugh') {
-      const url = censored ? PRELOAD_SOUNDS.tauntLohClean : PRELOAD_SOUNDS.tauntLoh;
-      const phrase = censored ? 'Ну ты и простофиля! Ха-ха!' : 'Ебать ты лох! Ха-ха-ха!';
-      this.playClip(url, 0.95, () => {
-        this.speakFallback(phrase, 1.85, 1.25, () => {
-          [520, 480, 540, 440].forEach((f, i) => this.playTone(f, 0.1, 'square', i * 0.11, 0.1));
+    const cfg = TAUNT_SOUND_CONFIG[sound];
+    if (!cfg) return;
+
+    this.playClip(
+      cfg.url,
+      0.95,
+      () => {
+        this.speakFallback(cfg.phrase, cfg.pitch, 1.2, () => {
+          this.playTone(440, 0.14, 'triangle', 0, 0.12);
         });
-      });
-    } else if (sound === 'rage') {
-      const url = censored ? PRELOAD_SOUNDS.tauntRentRageClean : PRELOAD_SOUNDS.tauntRentRage;
-      const phrase = censored
-        ? 'Да сколько можно платить аренду?!'
-        : 'Иди нахуй со своей арендой!';
-      this.playClip(url, 0.95, () => {
-        this.speakFallback(phrase, 1.75, 1.3, () => {
-          this.playTone(160, 0.35, 'sawtooth', 0, 0.15, 110);
-        });
-      });
-    } else if (sound === 'fiasco') {
-      this.playClip(PRELOAD_SOUNDS.tauntFiasco, 0.95, () => {
-        this.speakFallback('Это фиаско, братан!', 1.7, 1.2, () => {
-          this.playTone(440, 0.15, 'triangle', 0, 0.12);
-          this.playTone(311, 0.4, 'sawtooth', 0.16, 0.13, 240);
-        });
-      });
-    } else {
-      // Press F голосовая озвучка + торжественный аккорд fallback
-      this.playClip(PRELOAD_SOUNDS.tauntPressF, 0.95, () => {
-        this.speakFallback('Помянем... Пресс эф!', 1.5, 1.15, () => {
-          this.playTone(261.6, 0.6, 'sine', 0, 0.12);
-          this.playTone(329.6, 0.6, 'sine', 0.05, 0.1);
-          this.playTone(392.0, 0.7, 'sine', 0.1, 0.1);
-        });
-      });
-    }
+      },
+      (stopFn) => {
+        this.stopCurrentTaunt = stopFn;
+      }
+    );
   }
 
   public playTick() {
