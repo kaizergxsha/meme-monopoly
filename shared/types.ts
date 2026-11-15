@@ -91,6 +91,15 @@ export interface CreditState {
   principal: number;
   paybackAmount: number;
   dueRound: number;
+  takenAtRound?: number;
+}
+
+export interface KickVoteState {
+  initiatorId: string;
+  targetId: string;
+  votes: Record<string, boolean>; // playerId -> true (за кик) | false (против)
+  eligibleVoterIds: string[];
+  expiresAt: number;
 }
 
 export interface RestartTracker {
@@ -273,11 +282,13 @@ export interface RoomState {
   hasExtraTurn: boolean;
   mortgagedThisTurn: boolean;
   builtGroupsThisTurn: string[];
+  tradesProposedThisTurn?: number;
   lastDice: DiceRollResult | null;
   speedTargetMode: 'NONE' | 'TRIPLE' | 'BUS';
   validSpeedTargets: number[];
   auction: AuctionState | null;
   activeTrade: TradeOffer | null;
+  activeKickVote?: KickVoteState | null;
   portal: PortalState | null;
   lastJackpotResult: JackpotResult | null;
   pendingDebt: PendingDebt | null;
@@ -297,4 +308,45 @@ export interface PublicRoomSummary {
   status: 'LOBBY' | 'PLAYING' | 'FINISHED';
   hasPassword: boolean;
   censored: boolean;
+  playerIds?: string[];
+  playerNames?: string[];
+  hasDisconnectedHumans?: boolean;
+}
+
+export interface PlayerProfileData {
+  playerId: string;
+  nickname: string;
+  avatar: string;
+  color: string;
+  diceSkin: DiceSkin;
+  gamesPlayed: number;
+  wins: number;
+  createdAt: number;
+  updatedAt: number;
+  isRegistered: boolean;
+  stats: PlayerStats;
+}
+
+export interface AuthAccount {
+  email: string;
+  playerId: string;
+  profile: PlayerProfileData;
+}
+
+export interface LeaderboardEntry {
+  playerId?: string;
+  nickname: string;
+  avatar: string;
+  gamesPlayed: number;
+  wins: number;
+}
+
+export interface RecentMatchSummary {
+  id: number;
+  roomCode: string;
+  mode: string;
+  winnerNames: string;
+  rounds: number;
+  durationSec: number;
+  finishedAt: number;
 }

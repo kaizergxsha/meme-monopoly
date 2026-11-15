@@ -267,9 +267,6 @@ export function canMortgageCell(
     if (state.players[state.currentPlayerIndex]?.id !== playerId) {
       return { ok: false, reason: 'Заложить поле можно только в свой ход' };
     }
-    if (state.mortgagedThisTurn) {
-      return { ok: false, reason: 'За ход можно заложить только 1 поле' };
-    }
   }
   if (def.groupId) {
     const hasAnyBranch = getGroupCellDefs(def.groupId).some(
