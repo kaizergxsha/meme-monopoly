@@ -245,12 +245,24 @@ export interface ActiveCardPopup {
   tone: 'good' | 'bad' | 'move' | 'special';
 }
 
+export type TauntSoundId =
+  | 'balls'
+  | 'mi_bombo'
+  | 'blyat'
+  | 'scream'
+  | 'bruh'
+  | 'laugh'
+  | 'casino'
+  | 'gay';
+
 export interface TauntDef {
-  id: string;
+  id: TauntSoundId;
+  label: string;
   text: string;
   cleanText: string;
   emoji: string;
-  sound: 'laugh' | 'fiasco' | 'trombone' | 'rage' | 'pressf';
+  sound: TauntSoundId;
+  ledHex: string;
 }
 
 export interface TauntEvent {
@@ -321,6 +333,7 @@ export interface RoomState {
   lastCardPopup: ActiveCardPopup | null;
   lastTransfer?: CashTransferAnim | null;
   lastPoliceArrestAt?: number | null;
+  lastTauntAt?: number;
   winnerIds: string[];
   winnerTeam: 0 | 1 | null;
   logs: GameLogEntry[];
