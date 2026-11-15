@@ -5,7 +5,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { GameManager } from '../server/gameEngine.ts';
-import { TOKEN_COLORS } from '../shared/memeContent.ts';
+import { BOARD_CELLS } from '../shared/boardData.ts';
+import { CHANCE_DECK, TOKEN_COLORS } from '../shared/memeContent.ts';
 import { calculateRent, canBuildBranch, canMortgageCell } from '../shared/rules.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -123,6 +124,60 @@ function testEngineMechanics() {
   for (const reqColor of ['Красный', 'Фиолетовый', 'Зелёный', 'Синий', 'Оранжевый']) {
     if (!colorNames.includes(reqColor)) {
       throw new Error(`Missing required distinct token color "${reqColor}", got ${colorNames.join(', ')}`);
+    }
+  }
+
+  if (CHANCE_DECK.length < 25) {
+    throw new Error(`Expected CHANCE_DECK to have >= 25 cards, got ${CHANCE_DECK.length}`);
+  }
+  const expectedNewCards: Record<number, string> = {
+    1: 'Шаурма у вокзала',
+    3: 'Мивина всухую',
+    5: 'Ржавая Жига без дна',
+    6: 'Паленый Stone Island',
+    7: 'Ебаный квантовый телепорт',
+    8: 'Мамонт-фишинг',
+    9: 'Арбитраж трафика',
+    11: 'Курс «Успешный успех»',
+    12: 'Блэкаут на 18 часов',
+    13: 'Фьючерсы с плечом x125',
+    14: 'Тапалка с листингом',
+    15: 'Катафалк на бляхах',
+    16: 'Жижа со вкусом гудрона',
+    18: 'Три банки энергетика',
+    19: 'Капельница от похмелья',
+    21: 'Ночная смена на складе',
+    23: 'Темка с дропами',
+    24: 'Доставка в ливень',
+    25: 'Маршрутка в ад',
+    26: 'Треш-стрим в TikTok',
+    27: 'Потная катка в Доту',
+    28: 'Блок от Финмониторинга',
+    29: 'Брейнрот-лента 24/7',
+    31: 'Клоповник у метро',
+    32: 'Студия 11 квадратов',
+    34: 'Заброшка на окраине',
+    35: 'Тонированный бусик',
+    37: 'Айфон в микрозайм',
+    39: 'Додеп последней хаты',
+  };
+  for (const [idStr, expectedTitle] of Object.entries(expectedNewCards)) {
+    const cell = BOARD_CELLS[Number(idStr)];
+    if (!cell || cell.name !== expectedTitle) {
+      throw new Error(`Expected cell ${idStr} to be "${expectedTitle}", got "${cell?.name}"`);
+    }
+  }
+  const bannedRegex = /АТБ|Перепичк|Rozetka|Монобанк|Дія|Укрзалізн|Укрзализн|Интерсити|S\.T\.A\.L\.K\.E\.R|NAVI|Uklon|Glovo|Новая Почта|Humana|OLX|Lanos|Ланос|Богдан|Пьяная Вишня|REVO|Живчик|Космолот|Copart|EcoFlow|Starlink|Троещин|Комфорт Таун|Буковел|Ябко|ДТЭК|YASNO|Эпицентр|Лукьянов/i;
+  for (const c of BOARD_CELLS) {
+    const dump = `${c.name} ${c.cleanName} ${c.shortName ?? ''} ${c.description ?? ''} ${c.cleanDescription ?? ''}`;
+    if (bannedRegex.test(dump)) {
+      throw new Error(`Found banned legacy brand in BOARD_CELLS[${c.id}]: ${dump}`);
+    }
+  }
+  for (const ch of CHANCE_DECK) {
+    const dump = `${ch.title} ${ch.cleanTitle} ${ch.description} ${ch.cleanDescription}`;
+    if (bannedRegex.test(dump)) {
+      throw new Error(`Found banned legacy brand in CHANCE_DECK[${ch.id}]: ${dump}`);
     }
   }
 
@@ -549,18 +604,18 @@ function testEngineMechanics() {
     proposeTradeLog.text.includes('1 200') ||
     proposeTradeLog.text.includes('1200') ||
     proposeTradeLog.text.includes('1.200') ||
-    proposeTradeLog.text.includes('Шаурма') ||
-    proposeTradeLog.text.includes('Донер') ||
-    proposeTradeLog.text.includes('Майнинг')
+    proposeTradeLog.text.includes('Шаурма у вокзала') ||
+    proposeTradeLog.text.includes('Мивина всухую')
   ) {
     throw new Error(`Expected NO trade details/amounts in propose log, got: ${proposeTradeLog.text}`);
   }
   const hasMemeProposal = [
+    'договорняк',
+    'темку',
+    'шаурму',
+    'бартер',
+    'порешать',
     'мирный договор',
-    'мутный договорняк',
-    'за гаражами',
-    'секретную темку',
-    'порешать вопросики',
     'договор',
   ].some((kw) => proposeTradeLog.text.toLowerCase().includes(kw));
   if (!hasMemeProposal) {
@@ -573,8 +628,8 @@ function testEngineMechanics() {
   if (
     (!acceptTradeLog.text.includes('1 200') && !acceptTradeLog.text.includes('1.200') && !acceptTradeLog.text.includes('1200')) ||
     (!acceptTradeLog.text.includes('1 000') && !acceptTradeLog.text.includes('1.000') && !acceptTradeLog.text.includes('1000')) ||
-    !acceptTradeLog.text.includes('Шаурма') ||
-    !acceptTradeLog.text.includes('Чебуречная')
+    !acceptTradeLog.text.includes('Шаурма у вокзала') ||
+    !acceptTradeLog.text.includes('Мивина всухую')
   ) {
     throw new Error(`Expected exact exchanged assets & cash in accept trade log, got: ${acceptTradeLog.text}`);
   }
@@ -1005,15 +1060,20 @@ async function main() {
       deviceScaleFactor: 1,
       mobile: false,
     });
-    await sleep(1200);
 
-    const lobbyCheck = await cdp.eval(`(() => ({
-      title: document.title,
-      hasCreateBtn: Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('СОЗДАТЬ КОМНАТУ')),
-      colorButtonsCount: document.querySelectorAll('[data-testid="home-color-picker"] button').length,
-      scrollW: document.documentElement.scrollWidth,
-      innerW: window.innerWidth
-    }))()`);
+    let lobbyCheck: any = { href: '', title: '', hasCreateBtn: false, colorButtonsCount: 0, scrollW: 0, innerW: 0 };
+    for (let i = 0; i < 25; i++) {
+      await sleep(300);
+      lobbyCheck = await cdp.eval(`(() => ({
+        href: window.location.href,
+        title: document.title,
+        hasCreateBtn: Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('СОЗДАТЬ КОМНАТУ')),
+        colorButtonsCount: document.querySelectorAll('[data-testid="home-color-picker"] button').length,
+        scrollW: document.documentElement.scrollWidth,
+        innerW: window.innerWidth
+      }))()`);
+      if (lobbyCheck.title && lobbyCheck.hasCreateBtn) break;
+    }
     console.log('[QA] Lobby check:', JSON.stringify(lobbyCheck));
     if (!lobbyCheck.hasCreateBtn) throw new Error('Create Room button missing in Lobby');
     if (lobbyCheck.colorButtonsCount !== 5) {
@@ -1234,6 +1294,103 @@ async function main() {
     fs.mkdirSync(shotDir, { recursive: true });
     const shotPre = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 88 });
     fs.writeFileSync(path.join(shotDir, '01_pre_roll.jpg'), Buffer.from(shotPre.data, 'base64'));
+
+    // Строгая проверка ШАГ 1 + ШАГ 4: отсутствие троеточий (...) и обрезки текста на клетках доски, в Soundpad Deck и в поповере
+    const textWrapAudit = await cdp.eval(`(() => {
+      const clippedCells = [];
+      for (let cid = 0; cid < 40; cid++) {
+        if (cid === 0 || cid === 10 || cid === 20 || cid === 30) continue;
+        const cellEl = document.querySelector('[data-cell-id="' + cid + '"]');
+        if (!cellEl) continue;
+        const spans = Array.from(cellEl.querySelectorAll('span'));
+        const labelSpan = spans[spans.length - 1];
+        if (!labelSpan) continue;
+        const cs = window.getComputedStyle(labelSpan);
+        if (
+          cs.textOverflow === 'ellipsis' ||
+          (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') ||
+          labelSpan.scrollWidth > labelSpan.clientWidth + 2 ||
+          labelSpan.scrollHeight > labelSpan.clientHeight + 2
+        ) {
+          clippedCells.push({
+            cid,
+            text: labelSpan.textContent,
+            sw: labelSpan.scrollWidth,
+            cw: labelSpan.clientWidth,
+            sh: labelSpan.scrollHeight,
+            ch: labelSpan.clientHeight,
+            clamp: cs.webkitLineClamp,
+          });
+        }
+      }
+
+      const clippedPads = [];
+      const padIds = ['taunt-voice-loh', 'taunt-voice-rent-rage', 'taunt-voice-fiasco', 'taunt-voice-govno', 'taunt-voice-press-f'];
+      for (const pid of padIds) {
+        const btn = document.querySelector('[data-testid="' + pid + '"]');
+        const labelSpan = btn ? btn.querySelectorAll('span')[1] : null;
+        if (!labelSpan) continue;
+        const cs = window.getComputedStyle(labelSpan);
+        if (
+          cs.textOverflow === 'ellipsis' ||
+          labelSpan.scrollWidth > labelSpan.clientWidth + 2 ||
+          labelSpan.scrollHeight > labelSpan.clientHeight + 2
+        ) {
+          clippedPads.push({
+            pid,
+            text: labelSpan.textContent,
+            sw: labelSpan.scrollWidth,
+            cw: labelSpan.clientWidth,
+          });
+        }
+      }
+
+      return { clippedCells, clippedPads };
+    })()`);
+    console.log('[QA] Text wrapping & non-truncation audit:', JSON.stringify(textWrapAudit));
+    if (textWrapAudit.clippedCells.length > 0 || textWrapAudit.clippedPads.length > 0) {
+      throw new Error(`Detected clipped/truncated UI labels: ${JSON.stringify(textWrapAudit)}`);
+    }
+
+    // Проверка крупной 3D-иллюстрации в шапке поповера при клике на клетку 6 и клетку 7 (в фазе PRE_ROLL)
+    await cdp.eval(`(() => {
+      const c6 = document.querySelector('[data-cell-id="6"]');
+      if (c6) c6.click();
+    })()`);
+    await sleep(300);
+    const popoverCheck = await cdp.eval(`(() => {
+      const dlg = document.querySelector('[role="dialog"]');
+      const svg = dlg ? dlg.querySelectorAll('svg')[1] : null;
+      const r = svg ? svg.getBoundingClientRect() : { width: 0, height: 0 };
+      const hasTruncate = dlg ? dlg.querySelectorAll('.truncate').length : -1;
+      return {
+        open: !!dlg,
+        title: dlg?.getAttribute('aria-label') || '',
+        artW: Math.round(r.width),
+        artH: Math.round(r.height),
+        hasTruncate,
+      };
+    })()`);
+    console.log('[QA] Popover hero artwork check:', JSON.stringify(popoverCheck));
+    if (!popoverCheck.open || popoverCheck.artW < 64 || popoverCheck.artH < 64 || popoverCheck.hasTruncate > 0) {
+      throw new Error(`Popover hero artwork / truncation check failed: ${JSON.stringify(popoverCheck)}`);
+    }
+    const shotPop = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 90 });
+    fs.writeFileSync(path.join(shotDir, '06_property_popover.jpg'), Buffer.from(shotPop.data, 'base64'));
+
+    await cdp.eval(`(() => {
+      const c7 = document.querySelector('[data-cell-id="7"]');
+      if (c7) c7.click();
+    })()`);
+    await sleep(300);
+    const shotPortal = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 90 });
+    fs.writeFileSync(path.join(shotDir, '07_portal_popover.jpg'), Buffer.from(shotPortal.data, 'base64'));
+    await cdp.eval(`(() => {
+      const dlg = document.querySelector('[role="dialog"]');
+      const closeBtn = dlg?.querySelector('button[aria-label="Закрыть карточку"]');
+      if (closeBtn) closeBtn.click();
+    })()`);
+    await sleep(200);
 
     await cdp.eval(`(() => {
       const rollBtn = Array.from(document.querySelectorAll('button')).find(b => /бросить кубики/i.test(b.textContent || ''));
