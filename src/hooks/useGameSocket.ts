@@ -244,6 +244,7 @@ export function useGameSocket() {
               expiresAt: rawState.activeKickVote.expiresAt + clockOffset,
             }
           : null,
+        lastTauntAt: rawState.lastTauntAt ? rawState.lastTauntAt + clockOffset : 0,
         players: rawState.players.map((p) => ({
           ...p,
           lastTauntAt: p.lastTauntAt ? p.lastTauntAt + clockOffset : 0,
@@ -269,13 +270,10 @@ export function useGameSocket() {
     socket.on('room:taunt', (ev: TauntEvent) => {
       const def = TAUNTS.find((t) => t.id === ev.tauntId);
       if (def) soundEngine.playTaunt(def.sound, censoredRef.current);
-      setActiveTaunts((prev) => ({ ...prev, [ev.playerId]: ev }));
 
-      const prevTimer = tauntTimersRef.current[ev.playerId];
-      if (prevTimer) {
-        clearTimeout(prevTimer);
-        delete tauntTimersRef.current[ev.playerId];
-      }
+      Object.values(tauntTimersRef.current).forEach(clearTimeout);
+      tauntTimersRef.current = {};
+      setActiveTaunts({ [ev.playerId]: ev });
 
       tauntTimersRef.current[ev.playerId] = setTimeout(() => {
         delete tauntTimersRef.current[ev.playerId];
@@ -285,7 +283,7 @@ export function useGameSocket() {
           delete copy[ev.playerId];
           return copy;
         });
-      }, 4200);
+      }, 4500);
     });
 
     socket.on('room:bankruptcy_anim', (ev: BankruptcyAnimationEvent) => {
