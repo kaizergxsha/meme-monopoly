@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { GameManager } from '../server/gameEngine.ts';
 import { BOARD_CELLS } from '../shared/boardData.ts';
-import { CHANCE_DECK, TOKEN_COLORS } from '../shared/memeContent.ts';
+import { CHANCE_DECK, TAUNT_COOLDOWN_MS, TAUNTS, TOKEN_COLORS } from '../shared/memeContent.ts';
 import { calculateRent, canBuildBranch, canMortgageCell } from '../shared/rules.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -872,6 +872,44 @@ function testEngineMechanics() {
     throw new Error(`Expected tradesProposedThisTurn reset to 0 on next turn, got ${rTradeLim.state.tradesProposedThisTurn}`);
   }
 
+  // Тест единого 10-сек кулдауна саундпада на всю комнату (только 1 человек одновременно)
+  let tauntEmitted = 0;
+  const gmTaunt = new GameManager({
+    onStateChange: () => {},
+    onTaunt: () => {
+      tauntEmitted += 1;
+    },
+    onBankruptcyAnim: () => {},
+  });
+  const rTaunt = gmTaunt.createRoom(
+    { playerId: 'tp1', socketId: 'ts1', name: 'TP1', avatar: '🐸', color: '#dc2626', diceSkin: 'classic' },
+    'classic'
+  );
+  gmTaunt.joinRoom(rTaunt.state.code, {
+    playerId: 'tp2',
+    socketId: 'ts2',
+    name: 'TP2',
+    avatar: '🤡',
+    color: '#2563eb',
+    diceSkin: 'classic',
+  });
+  gmTaunt.startGame(rTaunt, 'tp1');
+  gmTaunt.sendTaunt(rTaunt, 'tp1', 'balls');
+  if (tauntEmitted !== 1) {
+    throw new Error(`Expected first taunt to emit, got ${tauntEmitted}`);
+  }
+  // Другой игрок в той же комнате не может применить звук, пока не пройдёт 10 сек
+  gmTaunt.sendTaunt(rTaunt, 'tp2', 'mi_bombo');
+  if (tauntEmitted !== 1) {
+    throw new Error(`Expected second player taunt within 10s to be blocked, got ${tauntEmitted}`);
+  }
+  // После окончания 10-секундного кулдауна другой игрок может применить звук
+  rTaunt.state.lastTauntAt = Date.now() - TAUNT_COOLDOWN_MS - 10;
+  gmTaunt.sendTaunt(rTaunt, 'tp2', 'mi_bombo');
+  if (tauntEmitted !== 2) {
+    throw new Error(`Expected second player taunt after 10s cooldown to succeed, got ${tauntEmitted}`);
+  }
+
   return 'ENGINE_ALL_MODES_OK';
 }
 
@@ -987,25 +1025,25 @@ async function main() {
     }
     console.log('[QA] Auth & Profile API checks: PASS');
 
-    // Проверка доступности и размера всех 8 голосовых .wav файлов по HTTP
-    const voiceWavFiles = [
-      '/sounds/taunt_loh.wav',
-      '/sounds/taunt_loh_clean.wav',
-      '/sounds/taunt_rent_rage.wav',
-      '/sounds/taunt_rent_rage_clean.wav',
-      '/sounds/taunt_fiasco.wav',
-      '/sounds/taunt_govno.wav',
-      '/sounds/taunt_govno_clean.wav',
-      '/sounds/taunt_press_f.wav',
+    // Проверка доступности и размера всех 8 голосовых .mp3 файлов по HTTP
+    const voiceMp3Files = [
+      '/sounds/taunt_balls.mp3',
+      '/sounds/taunt_mi_bombo.mp3',
+      '/sounds/taunt_blyat.mp3',
+      '/sounds/taunt_scream.mp3',
+      '/sounds/taunt_bruh.mp3',
+      '/sounds/taunt_laugh.mp3',
+      '/sounds/taunt_casino.mp3',
+      '/sounds/taunt_gay.mp3',
     ];
-    for (const wavPath of voiceWavFiles) {
-      const audioRes = await checkAudioHttp(`http://127.0.0.1:${PORT}${wavPath}`);
-      console.log(`[QA] Audio file check ${wavPath}: status=${audioRes.status}, size=${audioRes.length} bytes, type=${audioRes.contentType}`);
+    for (const mp3Path of voiceMp3Files) {
+      const audioRes = await checkAudioHttp(`http://127.0.0.1:${PORT}${mp3Path}`);
+      console.log(`[QA] Audio file check ${mp3Path}: status=${audioRes.status}, size=${audioRes.length} bytes, type=${audioRes.contentType}`);
       if (audioRes.status !== 200) {
-        throw new Error(`Expected HTTP 200 for ${wavPath}, got ${audioRes.status}`);
+        throw new Error(`Expected HTTP 200 for ${mp3Path}, got ${audioRes.status}`);
       }
       if (audioRes.length < 10000) {
-        throw new Error(`Expected size >= 10000 bytes for ${wavPath}, got ${audioRes.length}`);
+        throw new Error(`Expected size >= 10000 bytes for ${mp3Path}, got ${audioRes.length}`);
       }
     }
 
@@ -1325,7 +1363,7 @@ async function main() {
       }
 
       const clippedPads = [];
-      const padIds = ['taunt-voice-loh', 'taunt-voice-rent-rage', 'taunt-voice-fiasco', 'taunt-voice-govno', 'taunt-voice-press-f'];
+      const padIds = ${JSON.stringify(TAUNTS.map((t) => `taunt-voice-${t.id}`))};
       for (const pid of padIds) {
         const btn = document.querySelector('[data-testid="' + pid + '"]');
         const labelSpan = btn ? btn.querySelectorAll('span')[1] : null;
@@ -1472,9 +1510,9 @@ async function main() {
     })()`);
     await sleep(200);
 
-    // Проверка кнопок озвучки (всех 5) на Desktop (1440x900)
+    // Проверка кнопок озвучки (всех 8) на Desktop (1440x900)
     const desktopVoiceBtns = await cdp.eval(`(() => {
-      const ids = ['taunt-voice-loh', 'taunt-voice-rent-rage', 'taunt-voice-fiasco', 'taunt-voice-govno', 'taunt-voice-press-f'];
+      const ids = ${JSON.stringify(TAUNTS.map((t) => `taunt-voice-${t.id}`))};
       const out = {};
       for (const id of ids) {
         const el = document.querySelector('[data-testid="' + id + '"]');
@@ -1489,10 +1527,17 @@ async function main() {
       }
     }
     await cdp.eval(`(() => {
-      const btnLoh = document.querySelector('[data-testid="taunt-voice-loh"]');
-      if (btnLoh) btnLoh.click();
+      const btn = document.querySelector('[data-testid="taunt-voice-balls"]');
+      if (btn) btn.click();
     })()`);
-    await sleep(200);
+    await sleep(300);
+    const desktopCooldownCheck = await cdp.eval(`(() => {
+      const btn = document.querySelector('[data-testid="taunt-voice-mi_bombo"]');
+      return btn ? btn.disabled : false;
+    })()`);
+    if (!desktopCooldownCheck) {
+      throw new Error('Expected all desktop soundpad buttons to be disabled during 10s cooldown');
+    }
 
     for (const vp of [
       { width: 1920, height: 1080, mobile: false },
@@ -1537,29 +1582,22 @@ async function main() {
           throw new Error(`Expected mobile strip & action dock visible at 390x844, got ${JSON.stringify(vpRes)}`);
         }
 
-        // Проверка мобильных кнопок озвучки
+        // Проверка мобильных кнопок озвучки (всех 8)
         const mobileVoiceBtns = await cdp.eval(`(() => {
-          const btnLoh = document.querySelector('[data-testid="mobile-taunt-loh"]');
-          const btnRage = document.querySelector('[data-testid="mobile-taunt-rent-rage"]');
-          return {
-            lohExists: !!btnLoh,
-            lohWidth: btnLoh ? Math.round(btnLoh.getBoundingClientRect().width) : 0,
-            rageExists: !!btnRage,
-            rageWidth: btnRage ? Math.round(btnRage.getBoundingClientRect().width) : 0,
-          };
+          const ids = ${JSON.stringify(TAUNTS.map((t) => `mobile-taunt-${t.id}`))};
+          const out = {};
+          for (const id of ids) {
+            const el = document.querySelector('[data-testid="' + id + '"]');
+            out[id] = el ? Math.round(el.getBoundingClientRect().width) : 0;
+          }
+          return out;
         })()`);
         console.log('[QA] Mobile voice taunt buttons check:', JSON.stringify(mobileVoiceBtns));
-        if (!mobileVoiceBtns.lohExists || mobileVoiceBtns.lohWidth <= 0) {
-          throw new Error(`Mobile [data-testid="mobile-taunt-loh"] missing or width 0: ${JSON.stringify(mobileVoiceBtns)}`);
+        for (const [id, w] of Object.entries(mobileVoiceBtns)) {
+          if ((w as number) <= 0) {
+            throw new Error(`Mobile [data-testid="${id}"] missing or width 0: ${JSON.stringify(mobileVoiceBtns)}`);
+          }
         }
-        if (!mobileVoiceBtns.rageExists || mobileVoiceBtns.rageWidth <= 0) {
-          throw new Error(`Mobile [data-testid="mobile-taunt-rent-rage"] missing or width 0: ${JSON.stringify(mobileVoiceBtns)}`);
-        }
-        await cdp.eval(`(() => {
-          const btnRage = document.querySelector('[data-testid="mobile-taunt-rent-rage"]');
-          if (btnRage) btnRage.click();
-        })()`);
-        await sleep(200);
 
         const shotMobile = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 88 });
         fs.writeFileSync(path.join(shotDir, '05_mobile_390x844.jpg'), Buffer.from(shotMobile.data, 'base64'));
