@@ -502,6 +502,18 @@ class SoundEngine {
     }
   }
 
+  public playTick() {
+    if (this.muted) return;
+    this.playTone(880, 0.045, 'sine', 0, 0.08, 660);
+  }
+
+  public playBuild() {
+    if (this.muted) return;
+    [440, 554.37, 659.25].forEach((f, i) =>
+      this.playTone(f, 0.11, 'triangle', i * 0.055, 0.13)
+    );
+  }
+
   public playBankruptcy(style: 'eralash' | 'curb' | 'wasted') {
     if (style === 'wasted') {
       // GTA Wasted тяжёлый басовый удар
