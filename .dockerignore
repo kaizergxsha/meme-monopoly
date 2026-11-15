@@ -1,0 +1,10 @@
+node_modules
+dist
+server/data/*.sqlite
+server/data/*.sqlite-*
+.git
+.qa-shots
+.tmp-chrome-qa-*
+cloudflared.exe
+start-server.bat
+start-server.ps1

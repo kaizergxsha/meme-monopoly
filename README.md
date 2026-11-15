@@ -1,2 +1,35 @@
-# meme-monopoly
-Meme Monopoly online multiplayer game (Node.js + Socket.IO + React)
+# 🎲 Мемная Монополия (Zero Donate Edition)
+
+Многопользовательская браузерная онлайн-игра на 2–5 человек с полной механикой и режимами **Monopoly One**, авторитативным сервером (`Node.js + Socket.IO + SQLite`) и сквозной мемной подачей без единого платного ограничения.
+
+## 🚀 Быстрый запуск локально
+
+```bash
+cd meme-monopoly
+npm install
+npm run build
+npm start
+```
+
+Откройте в браузере: `http://localhost:3001`
+
+### 🌐 Как позвать друзей по одной ссылке (без проброса портов)
+
+1. Запустите игру (`npm start` — порт `3001`).
+2. Пробросьте туннель одной командой:
+   - **Cloudflare Tunnel:** `cloudflared tunnel --url http://localhost:3001`
+   - **Playit.gg:** создайте HTTP-туннель на `127.0.0.1:3001`
+3. Создайте комнату и нажмите **«🔗 Скопировать инвайт-ссылку»** — друзья сразу попадут к вам в лобби без регистрации!
+
+## 🧩 Добавление своих мемных карточек
+
+Откройте `server/data/customCards.json` и добавьте новые объекты карточек — сервер подхватит их при запуске и замешает в колоду «Мем-Шансов».
+
+## 🐳 Docker / Render / Railway
+
+В корне проекта готов `Dockerfile`:
+
+```bash
+docker build -t meme-monopoly .
+docker run -p 3001:3001 meme-monopoly
+```

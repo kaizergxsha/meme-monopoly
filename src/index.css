@@ -1,0 +1,249 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+    width: 100vw;
+    overflow: hidden;
+    background-color: #17181c;
+    color: #f5f5f5;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Тонкие кастомные скроллбары в стиле Monopoly One */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.34);
+}
+
+/* Незаметный скроллбар для центральной ленты чата */
+.chat-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+.chat-scrollbar::-webkit-scrollbar {
+  width: 3px;
+}
+.chat-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 9999px;
+}
+.chat-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+@keyframes diceRollAnim {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) rotate(-28deg) scale(0.55);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-10px) rotate(14deg) scale(1.14);
+  }
+  68% {
+    transform: translateY(3px) rotate(-6deg) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+}
+
+.animate-dice-roll {
+  animation: diceRollAnim 0.48s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+}
+
+@keyframes actionCardSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-action-card {
+  animation: actionCardSlide 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes tokenStepHop {
+  0% {
+    transform: translateY(0) scale(1);
+    filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45));
+  }
+  42% {
+    transform: translateY(-10px) scale(1.24) rotate(-5deg);
+    filter: drop-shadow(0 12px 10px rgba(0, 0, 0, 0.55));
+  }
+  75% {
+    transform: translateY(-3px) scale(1.06) rotate(2deg);
+  }
+  100% {
+    transform: translateY(0) scale(1) rotate(0deg);
+    filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.45));
+  }
+}
+
+.animate-token-hop {
+  animation: tokenStepHop 0.125s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes tokenStepTrail {
+  0% {
+    opacity: 0.85;
+    transform: translate(-50%, -50%) scale(0.55);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.7);
+  }
+}
+
+.animate-token-trail {
+  animation: tokenStepTrail 0.42s ease-out forwards;
+}
+
+@keyframes tokenLandWave {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.65);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.45);
+  }
+}
+
+.animate-token-land {
+  animation: tokenLandWave 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes tokenActivePulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scale(1.38);
+    opacity: 0.15;
+  }
+}
+
+.animate-token-halo {
+  animation: tokenActivePulse 1.8s ease-in-out infinite;
+}
+
+@keyframes tabPriceFlip {
+  0% {
+    opacity: 0.2;
+    transform: translateY(5px) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-tab-flip {
+  animation: tabPriceFlip 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes cashDeltaFloat {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.88);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(0) scale(1.04);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-7px) scale(0.96);
+  }
+}
+
+.animate-cash-delta {
+  animation: cashDeltaFloat 1.85s ease-out forwards;
+}
+
+@keyframes wastedStamp {
+  0% {
+    opacity: 0;
+    transform: scale(2.4) rotate(-8deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.95) rotate(-4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-4deg);
+  }
+}
+
+.animate-wasted {
+  animation: wastedStamp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes curbScroll {
+  0% {
+    transform: translateY(60px);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-20px);
+    opacity: 1;
+  }
+}
+
+.animate-curb {
+  animation: curbScroll 3.8s ease-out forwards;
+}
+
+/* Адаптивный квадратный размер доски с местом под внешние плашки цен */
+.board-square-wrap {
+  width: min(calc(100cqw - 56px), calc(100cqh - 36px), 1080px);
+  height: min(calc(100cqw - 56px), calc(100cqh - 36px), 1080px);
+}
+
+@media (min-width: 640px) {
+  .board-square-wrap {
+    width: min(calc(100cqw - 96px), calc(100cqh - 48px), 1080px);
+    height: min(calc(100cqw - 96px), calc(100cqh - 48px), 1080px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .board-square-wrap {
+    width: min(calc(100cqw - 108px), calc(100cqh - 54px), 1080px);
+    height: min(calc(100cqw - 108px), calc(100cqh - 54px), 1080px);
+  }
+}
