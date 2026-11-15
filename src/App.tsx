@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BOARD_CELLS } from '../shared/boardData.ts';
+import { TAUNT_COOLDOWN_MS, TAUNTS } from '../shared/memeContent.ts';
 import { formatMoney, getTokenWalkDurationMs, txt } from '../shared/rules.ts';
 import { useGameSocket } from './hooks/useGameSocket.ts';
 import { LobbyView } from './components/LobbyView.tsx';
@@ -286,8 +287,8 @@ export const App: React.FC = () => {
               const curPlayer = roomState.players[roomState.currentPlayerIndex];
               const isMyTurn = curPlayer?.id === profile.playerId;
               const me = roomState.players.find((p) => p.id === profile.playerId);
-              const tauntCooldownLeft = me
-                ? Math.max(0, Math.ceil((me.lastTauntAt + 5000 - nowMs) / 1000))
+              const tauntCooldownLeft = roomState.lastTauntAt
+                ? Math.max(0, Math.ceil((roomState.lastTauntAt + TAUNT_COOLDOWN_MS - nowMs) / 1000))
                 : 0;
               const walkMs = getTokenWalkDurationMs(roomState.lastDice);
               const isWalkingToChance =
@@ -560,62 +561,40 @@ export const App: React.FC = () => {
 
                   {me && !me.isBankrupt && roomState.status === 'PLAYING' && (
                     <div className="space-y-1.5 min-w-0">
-                      <div className="grid grid-cols-2 gap-1.5 min-w-0">
-                        <button
-                          type="button"
-                          data-testid="mobile-taunt-loh"
-                          disabled={tauntCooldownLeft > 0}
-                          onClick={() => actions.sendTaunt('loh')}
-                          className="streamdeck-pad min-w-0 py-1.5 pl-3 pr-2 rounded-lg overflow-hidden disabled:opacity-35 text-[#F1F5F9] text-[10.5px] font-bold flex items-center justify-between gap-1 cursor-pointer"
-                        >
-                          <span className="pointer-events-none absolute left-0 inset-y-1 w-[3px] rounded-r-full bg-[#E5B869] shadow-[0_0_8px_#E5B869]" />
-                          <span className="truncate">
-                            {censored ? '🤡 Ну ты и простофиля' : '🦣 Ебать ты мамонт!'}
+                      <div className="flex items-center justify-between px-0.5 text-[9px] uppercase tracking-[0.12em] text-neutral-500 font-bold">
+                        <span>Soundpad Deck</span>
+                        {tauntCooldownLeft > 0 ? (
+                          <span className="font-mono-num text-[#E5B869] normal-case tracking-normal">
+                            ⏳ {tauntCooldownLeft}с
                           </span>
-                          <span className="shrink-0 text-[11px] leading-none text-[#E5B869]">🔊</span>
-                        </button>
-                        <button
-                          type="button"
-                          data-testid="mobile-taunt-rent-rage"
-                          disabled={tauntCooldownLeft > 0}
-                          onClick={() => actions.sendTaunt('rent_rage')}
-                          className="streamdeck-pad min-w-0 py-1.5 pl-3 pr-2 rounded-lg overflow-hidden disabled:opacity-35 text-[#F1F5F9] text-[10.5px] font-bold flex items-center justify-between gap-1 cursor-pointer"
-                        >
-                          <span className="pointer-events-none absolute left-0 inset-y-1 w-[3px] rounded-r-full bg-[#F43F5E] shadow-[0_0_8px_#F43F5E]" />
-                          <span className="truncate">
-                            {censored
-                              ? '😤 Сколько можно платить аренду'
-                              : '🖕 Иди нахуй со своей арендой'}
-                          </span>
-                          <span className="shrink-0 text-[11px] leading-none text-[#F43F5E]">🔊</span>
-                        </button>
+                        ) : (
+                          <span className="font-mono-num text-[#10B981]">LIVE</span>
+                        )}
                       </div>
 
-                      <div className="grid grid-cols-3 gap-1 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => actions.sendTaunt('fiasco')}
-                          disabled={tauntCooldownLeft > 0}
-                          className="streamdeck-pad min-w-0 py-1 px-1.5 rounded-lg disabled:opacity-35 text-neutral-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer truncate"
-                        >
-                          <span>🤦‍♂️ Фиаско</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => actions.sendTaunt('govno')}
-                          disabled={tauntCooldownLeft > 0}
-                          className="streamdeck-pad min-w-0 py-1 px-1.5 rounded-lg disabled:opacity-35 text-neutral-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer truncate"
-                        >
-                          <span>💩 {censored ? 'Инвест' : 'Говно'}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => actions.sendTaunt('press_f')}
-                          disabled={tauntCooldownLeft > 0}
-                          className="streamdeck-pad min-w-0 py-1 px-1.5 rounded-lg disabled:opacity-35 text-neutral-200 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer truncate"
-                        >
-                          <span>🕯️ Press F</span>
-                        </button>
+                      <div className="grid grid-cols-4 gap-1 min-w-0">
+                        {TAUNTS.map((pad) => (
+                          <button
+                            key={pad.id}
+                            type="button"
+                            data-testid={`mobile-taunt-${pad.id}`}
+                            disabled={tauntCooldownLeft > 0}
+                            onClick={() => actions.sendTaunt(pad.id)}
+                            className="streamdeck-pad min-w-0 py-1.5 pl-2 pr-1 rounded-lg overflow-hidden disabled:opacity-35 text-[#F1F5F9] text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer leading-[1.1]"
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                backgroundColor: pad.ledHex,
+                                boxShadow: `0 0 6px ${pad.ledHex}aa`,
+                              }}
+                              className="pointer-events-none absolute left-0 inset-y-1 w-[2.5px] rounded-r-full"
+                            />
+                            <span className="min-w-0 whitespace-normal break-words text-center">
+                              {pad.emoji} {pad.label}
+                            </span>
+                          </button>
+                        ))}
                       </div>
 
                       <div className="grid grid-cols-2 gap-1.5 min-w-0">
