@@ -274,6 +274,8 @@ export class GameManager {
       lastJackpotResult: null,
       pendingDebt: null,
       lastCardPopup: null,
+      lastTransfer: null,
+      lastPoliceArrestAt: null,
       winnerIds: [],
       winnerTeam: null,
       logs: [],
@@ -666,6 +668,8 @@ export class GameManager {
     room.state.lastJackpotResult = null;
     room.state.pendingDebt = null;
     room.state.lastCardPopup = null;
+    room.state.lastTransfer = null;
+    room.state.lastPoliceArrestAt = null;
     room.state.winnerIds = [];
     room.state.winnerTeam = null;
 
@@ -969,11 +973,12 @@ export class GameManager {
     player.cash -= 500;
     player.inJail = false;
     player.jailTurns = 0;
+    this.recordTransfer(room, player.id, 'BANK', 500, 10);
     this.addLog(
       room,
       'SYSTEM',
-      `🔓 ${player.name} дал взятку вертухаю 500k и вышел из обезьянника!`,
-      `🔓 ${player.name} оплатил залог 500k и вышел на свободу!`,
+      `🔓 ${player.name} дал залог ${formatMoney(500)} и вышел из изолятора!`,
+      `🔓 ${player.name} оплатил залог ${formatMoney(500)} и вышел на свободу!`,
       player
     );
     this.emitState(room);
@@ -1021,8 +1026,8 @@ export class GameManager {
           this.addLog(
             room,
             'DICE',
-            `🎲 [${die1} : ${die2}] 3-я ходкa мимо! Принудительный выкуп 500k и выход.`,
-            `🎲 [${die1} : ${die2}] 3-я попытка неудачна — принудительный штраф 500k и ход.`,
+            `🎲 [${die1} : ${die2}] 3-я ходка мимо! Принудительный выкуп ${formatMoney(500)} и выход.`,
+            `🎲 [${die1} : ${die2}] 3-я попытка неудачна — принудительный штраф ${formatMoney(500)} и ход.`,
             player
           );
           if (player.cash >= 500) {
@@ -1129,10 +1134,11 @@ export class GameManager {
         player.jailTurns = 0;
         player.doublesStreak = 0;
         room.state.hasExtraTurn = false;
+        room.state.lastPoliceArrestAt = Date.now();
         this.addLog(
           room,
           'DICE',
-          `🚨🎲 [${die1}:${die2}${speedLabel}] ТРИ ДУБЛЯ ПОДРЯД! Мусора приняли ${player.name} за спидхак — на бутылку!`,
+          `🚨🎲 [${die1}:${die2}${speedLabel}] ТРИ ДУБЛЯ ПОДРЯД! Патруль тормознул ${player.name} за спидхак — в изолятор!`,
           `🚨🎲 [${die1}:${die2}${speedLabel}] Три дубля подряд! ${player.name} отправляется в камеру!`,
           player
         );
@@ -1270,13 +1276,14 @@ export class GameManager {
     const retro = room.state.settings.retroRules || room.state.settings.mode === 'retro';
     const bonus = landedExact && !retro ? 3000 : 2000;
     player.cash += bonus;
+    this.recordTransfer(room, 'BANK', player.id, bonus, 0);
     this.addLog(
       room,
       'SYSTEM',
-      `💸 Зарплата пришла! ${player.name} лутает +${formatMoney(bonus)} ${
-        landedExact && !retro ? '(+2.000k за круг + 1.000k бонусом на Старте!)' : 'за круг'
+      `💸 Получка до списаний! ${player.name} лутает +${formatMoney(bonus)} ${
+        landedExact && !retro ? `(+${formatMoney(2000)} за круг + ${formatMoney(1000)} бонусом на Старте!)` : 'за круг'
       }.`,
-      `💸 Аванс получен! ${player.name} получает +${formatMoney(bonus)}.`,
+      `💸 Зарплата получена! ${player.name} получает +${formatMoney(bonus)}.`,
       player
     );
   }
@@ -1310,11 +1317,12 @@ export class GameManager {
       player.jailTurns = 0;
       player.doublesStreak = 0;
       room.state.hasExtraTurn = false;
+      room.state.lastPoliceArrestAt = Date.now();
       this.addLog(
         room,
         'SYSTEM',
-        `🚓 МУСОРА ПРИНЯЛИ! ${player.name} уезжает в обезьянник без бонуса Старта!`,
-        `🚓 Патруль задержал ${player.name}! Отправка в камеру.`,
+        `🚓 ПРИЁМ С МИГАЛКАМИ! ${player.name} уехал в СИЗО #13 без получки за Старт!`,
+        `🚓 Патруль задержал ${player.name}! Отправка в изолятор #13.`,
         player
       );
       this.finishPostRollOrAdvance(room);
@@ -1337,8 +1345,8 @@ export class GameManager {
         this.addLog(
           room,
           'SYSTEM',
-          `🎰 ${player.name} зашёл в «Ебучий Додеп», но в кармане нет даже 1.000k — выгнали взашей.`,
-          `🎰 У ${player.name} недостаточно средств (1.000k) для ставки в Джекпоте.`,
+          `🎰 ${player.name} зашёл в «Додеп», но в кармане нет даже ${formatMoney(1000)} — выгнали взашей.`,
+          `🎰 У ${player.name} недостаточно средств (${formatMoney(1000)}) для ставки в Джекпоте.`,
           player
         );
         this.finishPostRollOrAdvance(room);
@@ -1353,11 +1361,12 @@ export class GameManager {
     if (def.type === 'PORTAL') {
       if (retro) {
         player.cash += 1500;
+        this.recordTransfer(room, 'BANK', player.id, 1500, cellId);
         this.addLog(
           room,
           'SYSTEM',
-          `🎁 Ретро-бонус! ${player.name} нашёл заначку +1.500k!`,
-          `🎁 Ретро-бонус! ${player.name} получает +1.500k!`,
+          `🎁 Ретро-бонус! ${player.name} нашёл заначку +${formatMoney(1500)}!`,
+          `🎁 Ретро-бонус! ${player.name} получает +${formatMoney(1500)}!`,
           player
         );
         this.finishPostRollOrAdvance(room);
@@ -1396,11 +1405,12 @@ export class GameManager {
         const isBonus = cellId === 2 || cellId === 22;
         if (isBonus) {
           player.cash += 1000;
+          this.recordTransfer(room, 'BANK', player.id, 1000, cellId);
           this.addLog(
             room,
             'CHANCE',
-            `💰 Ретро-премия: ${player.name} получает +1.000k!`,
-            `💰 Ретро-премия: ${player.name} получает +1.000k!`,
+            `💰 Ретро-премия: ${player.name} получает +${formatMoney(1000)}!`,
+            `💰 Ретро-премия: ${player.name} получает +${formatMoney(1000)}!`,
             player
           );
           this.finishPostRollOrAdvance(room);
@@ -1534,6 +1544,43 @@ export class GameManager {
         cleanEffectLabel = effectLabel;
         break;
       }
+      case 'PAY_ALL': {
+        const perPlayer = card.amount ?? 250;
+        const activeOthers = room.state.players.filter((p) => p.id !== player.id && !p.isBankrupt).length;
+        tone = 'bad';
+        effectLabel = `Угостил всех по ${formatMoney(perPlayer)} (всего -${formatMoney(perPlayer * activeOthers)})`;
+        cleanEffectLabel = `Выплата всем по ${formatMoney(perPlayer)} (-${formatMoney(perPlayer * activeOthers)})`;
+        break;
+      }
+      case 'BRANCH_BONUS': {
+        const totalBranches = room.state.cells
+          .filter((c) => c.ownerId === player.id)
+          .reduce((acc, c) => acc + c.branches, 0);
+        const amt = Math.max(card.perBranchAmount ?? 300, totalBranches * (card.perBranchAmount ?? 300));
+        tone = 'good';
+        effectLabel = `Бонус за филиалы (${totalBranches} шт.): +${formatMoney(amt)}`;
+        cleanEffectLabel = effectLabel;
+        break;
+      }
+      case 'EXTRA_TURN': {
+        tone = 'good';
+        effectLabel = 'Турбо-буст: дополнительный ход 🎲';
+        cleanEffectLabel = 'Дополнительный бросок кубиков 🎲';
+        break;
+      }
+      case 'STEAL_LEADER': {
+        const amt = card.amount ?? 700;
+        tone = 'good';
+        effectLabel = `Перехват сделки у лидера: +${formatMoney(amt)}`;
+        cleanEffectLabel = `Бонусный контракт от лидера: +${formatMoney(amt)}`;
+        break;
+      }
+      case 'FREE_PORTAL': {
+        tone = 'move';
+        effectLabel = 'Бесплатный телепорт на 6 направлений 🚄';
+        cleanEffectLabel = 'Бесплатный выбор клетки для прыжка 🚄';
+        break;
+      }
       case 'GOTO_START': {
         const { startBonusDisabled } = getAntiStallStatus(room.state);
         const retro = room.state.settings.retroRules || room.state.settings.mode === 'retro';
@@ -1547,14 +1594,14 @@ export class GameManager {
       }
       case 'GOTO_JAIL': {
         tone = 'move';
-        effectLabel = 'Отправка в Обезьянник 🚓';
-        cleanEffectLabel = 'Отправка в Тюрьму 🚓';
+        effectLabel = 'Отправка в Изолятор 🚓';
+        cleanEffectLabel = 'Отправка в Камеру 🚓';
         break;
       }
       case 'SKIP_TURN': {
         tone = 'bad';
-        effectLabel = 'Пропуск следующего хода 🍺';
-        cleanEffectLabel = 'Пропуск следующего хода 🍺';
+        effectLabel = 'Пропуск следующего хода 🕯️';
+        cleanEffectLabel = 'Пропуск следующего хода 🕯️';
         break;
       }
     }
@@ -1605,6 +1652,7 @@ export class GameManager {
       case 'BONUS': {
         const amt = card.amount ?? 1000;
         player.cash += amt;
+        this.recordTransfer(room, 'BANK', player.id, amt, player.position);
         this.addLog(
           room,
           'CHANCE',
@@ -1647,7 +1695,7 @@ export class GameManager {
         this.addLog(
           room,
           'CHANCE',
-          `🛡️ ${player.name} получил карточку «${card.title}»! Следующий штраф/аренда (до 3.000k) обнулится!`,
+          `🛡️ ${player.name} получил карточку «${card.title}»! Следующий штраф/аренда (до ${formatMoney(3000)}) обнулится!`,
           `🛡️ ${player.name} получил защиту «${card.cleanTitle}»!`,
           player
         );
@@ -1665,14 +1713,134 @@ export class GameManager {
           }
         }
         player.cash += collected;
+        if (collected > 0) {
+          this.recordTransfer(room, 'BANK', player.id, collected, player.position);
+        }
         this.addLog(
           room,
           'CHANCE',
-          `🍻 «${card.title}» — пацаны скинулись ${player.name} в сумме на +${formatMoney(collected)}!`,
-          `🍻 «${card.cleanTitle}» — ${player.name} собрал +${formatMoney(collected)}!`,
+          `${card.icon} «${card.title}» — игроки скинулись ${player.name} на +${formatMoney(collected)}!`,
+          `${card.icon} «${card.cleanTitle}» — ${player.name} собрал +${formatMoney(collected)}!`,
           player
         );
         this.finishPostRollOrAdvance(room);
+        break;
+      }
+      case 'PAY_ALL': {
+        const perPlayer = card.amount ?? 250;
+        const targets = room.state.players.filter((p) => p.id !== player.id && !p.isBankrupt);
+        const totalPay = perPlayer * targets.length;
+        if (totalPay > 0) {
+          if (player.cash >= totalPay) {
+            player.cash -= totalPay;
+            for (const target of targets) {
+              target.cash += perPlayer;
+            }
+            this.recordTransfer(room, player.id, 'BANK', totalPay, player.position);
+            this.addLog(
+              room,
+              'CHANCE',
+              `${card.icon} «${card.title}» — ${player.name} раздал всем по ${formatMoney(perPlayer)} (всего -${formatMoney(totalPay)})!`,
+              `${card.icon} «${card.cleanTitle}» — ${player.name} выплатил всем -${formatMoney(totalPay)}.`,
+              player
+            );
+            this.finishPostRollOrAdvance(room);
+          } else {
+            this.addLog(
+              room,
+              'CHANCE',
+              `${card.icon} «${card.title}» — не хватает кэша на поляну (-${formatMoney(totalPay)})!`,
+              `${card.icon} «${card.cleanTitle}» — нехватка средств (-${formatMoney(totalPay)})!`,
+              player
+            );
+            this.chargePlayer(room, player, 'BANK', totalPay, card.title, card.cleanTitle, false);
+          }
+        } else {
+          this.finishPostRollOrAdvance(room);
+        }
+        break;
+      }
+      case 'BRANCH_BONUS': {
+        const totalBranches = room.state.cells
+          .filter((c) => c.ownerId === player.id)
+          .reduce((acc, c) => acc + c.branches, 0);
+        const perBranch = card.perBranchAmount ?? 300;
+        const amt = Math.max(perBranch, totalBranches * perBranch);
+        player.cash += amt;
+        this.recordTransfer(room, 'BANK', player.id, amt, player.position);
+        this.addLog(
+          room,
+          'CHANCE',
+          `${card.icon} ШАНС: «${card.title}» — за ${totalBranches} фил. прилетело +${formatMoney(amt)}!`,
+          `${card.icon} Шанс: «${card.cleanTitle}» — премия +${formatMoney(amt)}!`,
+          player
+        );
+        this.finishPostRollOrAdvance(room);
+        break;
+      }
+      case 'EXTRA_TURN': {
+        if (!player.inJail) {
+          room.state.hasExtraTurn = true;
+        }
+        this.addLog(
+          room,
+          'CHANCE',
+          `${card.icon} ШАНС: «${card.title}» — ${player.name} залетает на дополнительный бросок!`,
+          `${card.icon} Шанс: «${card.cleanTitle}» — ${player.name} получает ещё один ход!`,
+          player
+        );
+        this.finishPostRollOrAdvance(room);
+        break;
+      }
+      case 'STEAL_LEADER': {
+        const amt = card.amount ?? 700;
+        const leader = room.state.players
+          .filter((p) => p.id !== player.id && !p.isBankrupt)
+          .sort((a, b) => b.cash - a.cash)[0];
+        if (leader && leader.cash > 0) {
+          const stolen = Math.min(leader.cash, amt);
+          leader.cash -= stolen;
+          player.cash += stolen;
+          this.recordTransfer(room, leader.id, player.id, stolen, player.position);
+          this.addLog(
+            room,
+            'CHANCE',
+            `${card.icon} ШАНС: «${card.title}» — ${player.name} подрезал +${formatMoney(stolen)} у лидера ${leader.name}!`,
+            `${card.icon} Шанс: «${card.cleanTitle}» — ${player.name} получил ${formatMoney(stolen)} от ${leader.name}!`,
+            player
+          );
+        } else {
+          player.cash += 500;
+          this.recordTransfer(room, 'BANK', player.id, 500, player.position);
+          this.addLog(
+            room,
+            'CHANCE',
+            `${card.icon} ШАНС: «${card.title}» — у соперников пусто, банк докинул утешительные +${formatMoney(500)}!`,
+            `${card.icon} Шанс: «${card.cleanTitle}» — утешительный бонус +${formatMoney(500)}!`,
+            player
+          );
+        }
+        this.finishPostRollOrAdvance(room);
+        break;
+      }
+      case 'FREE_PORTAL': {
+        const pool = shuffle(
+          BOARD_CELLS.map((c) => c.id).filter((id) => id !== player.position && id !== 30)
+        );
+        room.state.portal = {
+          playerId: player.id,
+          candidateCells: pool.slice(0, 6),
+          extraDirectionsBought: 0,
+        };
+        room.state.phase = 'PORTAL';
+        this.setPhaseDeadline(room);
+        this.addLog(
+          room,
+          'CHANCE',
+          `${card.icon} ШАНС: «${card.title}» — ${player.name} выбирает точку для бесплатного телепорта!`,
+          `${card.icon} Шанс: «${card.cleanTitle}» — ${player.name} выбирает направление телепорта!`,
+          player
+        );
         break;
       }
       case 'GOTO_START': {
@@ -1694,10 +1862,11 @@ export class GameManager {
         player.jailTurns = 0;
         player.doublesStreak = 0;
         room.state.hasExtraTurn = false;
+        room.state.lastPoliceArrestAt = Date.now();
         this.addLog(
           room,
           'CHANCE',
-          `🚓 «${card.title}» — ${player.name} улетает в обезьянник!`,
+          `🚓 «${card.title}» — ${player.name} улетает в изолятор!`,
           `🚓 «${card.cleanTitle}» — ${player.name} отправляется в камеру!`,
           player
         );
@@ -1710,8 +1879,8 @@ export class GameManager {
         this.addLog(
           room,
           'CHANCE',
-          `🍺 «${card.title}» — ${player.name} пропустит следующий ход!`,
-          `🍺 «${card.cleanTitle}» — ${player.name} пропустит следующий ход!`,
+          `${card.icon} «${card.title}» — ${player.name} пропустит следующий ход!`,
+          `${card.icon} «${card.cleanTitle}» — ${player.name} пропустит следующий ход!`,
           player
         );
         this.finishPostRollOrAdvance(room);
@@ -1720,6 +1889,24 @@ export class GameManager {
     }
 
     this.emitState(room);
+  }
+
+  private recordTransfer(
+    room: ServerRoom,
+    fromId: string | 'BANK',
+    toId: string | 'BANK',
+    amount: number,
+    cellId: number
+  ) {
+    if (amount <= 0) return;
+    room.state.lastTransfer = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      fromId,
+      toId,
+      amount,
+      cellId,
+      timestamp: Date.now(),
+    };
   }
 
   private chargePlayer(
@@ -1796,6 +1983,7 @@ export class GameManager {
     rentTaxPercent: number = 0
   ) {
     debtor.cash -= amount;
+    this.recordTransfer(room, debtor.id, creditorId, amount, debtor.position);
     if (creditorId === 'BANK') {
       this.addLog(
         room,
@@ -2290,8 +2478,8 @@ export class GameManager {
     this.addLog(
       room,
       'SYSTEM',
-      `🌀 Квантовый пиздец выплюнул ${player.name} прямо на «${BOARD_CELLS[chosenCell].name}»!`,
-      `🌀 Портал перенёс ${player.name} на «${BOARD_CELLS[chosenCell].cleanName}»!`,
+      `🌀 Ебаный квантовый телепорт выплюнул ${player.name} прямо на «${BOARD_CELLS[chosenCell].name}»!`,
+      `🌀 Квантовый телепорт перенёс ${player.name} на «${BOARD_CELLS[chosenCell].cleanName}»!`,
       player
     );
 
@@ -2400,10 +2588,11 @@ export class GameManager {
     }
 
     if (payload.mode === 'ROULETTE') {
-      // Русская рулетка: 1..5 выживаешь и лутаешь +1.500k, на 6 — осечка в висок (-2.000k и пропуск хода)
+      // Русская рулетка: 1..5 выживаешь и лутаешь +$1 500, на 6 — осечка (-$2 000 и пропуск хода)
       const survived = rolled !== 6;
       if (survived) {
         player.cash += 1500;
+        this.recordTransfer(room, 'BANK', player.id, 1500, 20);
         room.state.lastJackpotResult = {
           mode: 'ROULETTE',
           rolledFace: rolled,
@@ -2415,8 +2604,8 @@ export class GameManager {
         this.addLog(
           room,
           'CHANCE',
-          `🔫 РУССКАЯ РУЛЕТКА [${rolled}/6]: Щелчок пустой! ${player.name} выжил и поднял +1.500k!`,
-          `🔫 Рулетка [${rolled}/6]: Удача! ${player.name} выигрывает +1.500k!`,
+          `🔫 РУССКАЯ РУЛЕТКА [${rolled}/6]: Щелчок пустой! ${player.name} выжил и поднял +${formatMoney(1500)}!`,
+          `🔫 Рулетка [${rolled}/6]: Удача! ${player.name} выигрывает +${formatMoney(1500)}!`,
           player
         );
         this.finishPostRollOrAdvance(room);
@@ -2434,8 +2623,8 @@ export class GameManager {
         this.addLog(
           room,
           'CHANCE',
-          `💥 РУССКАЯ РУЛЕТКА [6/6]: БАБАХ! ${player.name} словил маслину на -2.000k и пропуск хода!`,
-          `💥 Рулетка [6/6]: Проигрыш -2.000k и пропуск хода для ${player.name}!`,
+          `💥 РУССКАЯ РУЛЕТКА [6/6]: БАБАХ! ${player.name} словил осечку на -${formatMoney(2000)} и пропуск хода!`,
+          `💥 Рулетка [6/6]: Проигрыш -${formatMoney(2000)} и пропуск хода для ${player.name}!`,
           player
         );
         this.chargePlayer(room, player, 'BANK', 2000, 'Русская рулетка в Додепе', 'Штраф рулетки', false);
@@ -2444,7 +2633,7 @@ export class GameManager {
       return;
     }
 
-    // Ставка 1.000k на 1, 2 или 3 грани кубика
+    // Ставка $1 000 на 1, 2 или 3 грани кубика
     const faces = Array.from(
       new Set((payload.faces || [6]).filter((f) => f >= 1 && f <= 6))
     ).slice(0, 3);
@@ -2456,6 +2645,7 @@ export class GameManager {
 
     if (won) {
       player.cash += grossWin;
+      this.recordTransfer(room, 'BANK', player.id, grossWin - 1000, 20);
       this.bumpStat(player, 'casinoWins', 1);
       const net = grossWin - 1000;
       room.state.lastJackpotResult = {
@@ -2477,6 +2667,7 @@ export class GameManager {
         player
       );
     } else {
+      this.recordTransfer(room, player.id, 'BANK', 1000, 20);
       room.state.lastJackpotResult = {
         mode: 'DICE',
         rolledFace: rolled,
@@ -2489,8 +2680,8 @@ export class GameManager {
       this.addLog(
         room,
         'CHANCE',
-        `🎰 СЛИВ В ДОДЕПЕ! Выпало [${rolled}] мимо [${faces.join(',')}] — ${player.name} подарил казику 1.000k!`,
-        `🎰 Мимо! Выпало [${rolled}] — ${player.name} потерял ставку 1.000k.`,
+        `🎰 СЛИВ В ДОДЕПЕ! Выпало [${rolled}] мимо [${faces.join(',')}] — ${player.name} подарил казику ${formatMoney(1000)}!`,
+        `🎰 Мимо! Выпало [${rolled}] — ${player.name} потерял ставку ${formatMoney(1000)}.`,
         player
       );
     }
