@@ -8,12 +8,19 @@ import { BoardGrid } from './components/BoardGrid.tsx';
 import { TradeDraftState } from './components/CenterStage.tsx';
 import { Modals } from './components/Modals.tsx';
 import { BankruptcyOverlay } from './components/BankruptcyOverlay.tsx';
+import { PlayerAvatar } from './components/PlayerAvatar.tsx';
+import { ProfileModal } from './components/ProfileModal.tsx';
+import { AvatarCreatorModal } from './components/AvatarCreatorModal.tsx';
 
 export const App: React.FC = () => {
   const {
     connected,
     profile,
+    authAccount,
     updateLocalProfile,
+    registerAccount,
+    loginAccount,
+    logoutAccount,
     publicRooms,
     roomState,
     errorToast,
@@ -27,6 +34,8 @@ export const App: React.FC = () => {
 
   const [selectedCellId, setSelectedCellId] = useState<number | null>(null);
   const [creditModalOpen, setCreditModalOpen] = useState(false);
+  const [profileModalPlayerId, setProfileModalPlayerId] = useState<string | null>(null);
+  const [avatarCreatorOpen, setAvatarCreatorOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'BOARD' | 'PLAYERS'>('BOARD');
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -48,11 +57,16 @@ export const App: React.FC = () => {
 
   const openTradeWith = (targetId?: string) => {
     if (!roomState) return;
+    if ((roomState.tradesProposedThisTurn ?? 0) >= 3) return;
     const others = roomState.players.filter(
       (p) => !p.isBankrupt && p.id !== profile.playerId
     );
     const chosen = targetId || others[0]?.id || '';
     if (!chosen) return;
+    const curPlayer = roomState.players[roomState.currentPlayerIndex];
+    if (curPlayer?.id === profile.playerId) {
+      actions.notifyTradeDraftOpen();
+    }
     setSelectedCellId(null);
     setMobileTab('BOARD');
     setTradeDraft({
@@ -80,7 +94,10 @@ export const App: React.FC = () => {
         <LobbyView
           connected={connected}
           profile={profile}
+          authAccount={authAccount}
           onUpdateProfile={updateLocalProfile}
+          onOpenProfile={(pid) => setProfileModalPlayerId(pid || profile.playerId)}
+          onOpenAvatarCreator={() => setAvatarCreatorOpen(true)}
           publicRooms={publicRooms}
           roomState={roomState}
           censored={censored}
@@ -155,7 +172,9 @@ export const App: React.FC = () => {
                         : 'bg-[#222328] border-[#2e3038] border-l-4 text-neutral-100'
                     }`}
                   >
-                    <span className="text-sm leading-none shrink-0">{p.avatar}</span>
+                    <span className="text-sm leading-none shrink-0 inline-flex items-center">
+                      <PlayerAvatar avatar={p.avatar} />
+                    </span>
                     <div className="min-w-0 leading-tight">
                       <div className="text-[10px] font-bold truncate max-w-[68px] flex items-center gap-1">
                         <span>{p.name}</span>
@@ -190,7 +209,9 @@ export const App: React.FC = () => {
                 nowMs={nowMs}
                 onToggleCensor={toggleClientCensor}
                 onOpenTradeWith={openTradeWith}
+                onStartKickVote={actions.startKickVote}
                 onOpenCredit={() => setCreditModalOpen(true)}
+                onOpenProfile={(pid) => setProfileModalPlayerId(pid)}
                 onSendTaunt={actions.sendTaunt}
                 onSurrender={actions.surrender}
                 onLeaveRoom={actions.leaveRoom}
@@ -236,6 +257,8 @@ export const App: React.FC = () => {
                 tradeDraft={tradeDraft}
                 onChangeTradeDraft={setTradeDraft}
                 onProposeTrade={actions.proposeTrade}
+                onRespondTrade={actions.respondTrade}
+                onCastKickVote={actions.castKickVote}
               />
             </div>
           </div>
@@ -309,10 +332,17 @@ export const App: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-center py-1 text-xs font-semibold text-neutral-300 truncate">
-                        🔨 Ставка ${auc.highestBidderId ? auc.currentBid : auc.currentBid + 100} · Ход:{' '}
-                        <span style={{ color: curAucBidder?.color }} className="font-extrabold">
-                          {curAucBidder ? `${curAucBidder.avatar} ${curAucBidder.name}` : '...'}
+                      <div className="text-center py-1 text-xs font-semibold text-neutral-300 truncate flex items-center justify-center gap-1">
+                        <span>🔨 Ставка ${auc.highestBidderId ? auc.currentBid : auc.currentBid + 100} · Ход:</span>
+                        <span style={{ color: curAucBidder?.color }} className="font-extrabold inline-flex items-center gap-1">
+                          {curAucBidder ? (
+                            <>
+                              <PlayerAvatar avatar={curAucBidder.avatar} />
+                              <span>{curAucBidder.name}</span>
+                            </>
+                          ) : (
+                            '...'
+                          )}
                         </span>
                       </div>
                     )
@@ -481,14 +511,20 @@ export const App: React.FC = () => {
                       )}
                     </>
                   ) : (
-                    <div className="text-center py-1 text-xs font-semibold text-neutral-300 truncate">
-                      {tradeDraft.open
-                        ? '📄 Выберите поля на доске для договора'
-                        : isWalkingAfterRoll
-                        ? '👣 Фишка шагает по полю...'
-                        : curPlayer
-                        ? `⏳ Ходит ${curPlayer.avatar} ${curPlayer.name}`
-                        : 'Ожидание...'}
+                    <div className="text-center py-1 text-xs font-semibold text-neutral-300 truncate flex items-center justify-center gap-1">
+                      {tradeDraft.open ? (
+                        '📄 Выберите поля на доске для договора'
+                      ) : isWalkingAfterRoll ? (
+                        '👣 Фишка шагает по полю...'
+                      ) : curPlayer ? (
+                        <>
+                          <span>⏳ Ходит</span>
+                          <PlayerAvatar avatar={curPlayer.avatar} />
+                          <span>{curPlayer.name}</span>
+                        </>
+                      ) : (
+                        'Ожидание...'
+                      )}
                     </div>
                   )}
 
@@ -523,7 +559,34 @@ export const App: React.FC = () => {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-1.5 min-w-0">
+                      <div className="grid grid-cols-3 gap-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => actions.sendTaunt('fiasco')}
+                          disabled={tauntCooldownLeft > 0}
+                          className="min-w-0 py-1 px-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/35 disabled:opacity-35 text-sky-100 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer truncate"
+                        >
+                          <span>🤦‍♂️ Фиаско</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => actions.sendTaunt('govno')}
+                          disabled={tauntCooldownLeft > 0}
+                          className="min-w-0 py-1 px-1.5 rounded-lg bg-yellow-500/15 hover:bg-yellow-500/25 border border-yellow-400/35 disabled:opacity-35 text-yellow-100 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer truncate"
+                        >
+                          <span>💩 {censored ? 'Инвест' : 'Говно'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => actions.sendTaunt('press_f')}
+                          disabled={tauntCooldownLeft > 0}
+                          className="min-w-0 py-1 px-1.5 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 border border-purple-400/35 disabled:opacity-35 text-purple-100 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer truncate"
+                        >
+                          <span>🕯️ Press F</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5 min-w-0">
                         <button
                           type="button"
                           onClick={() => setCreditModalOpen(true)}
@@ -533,18 +596,10 @@ export const App: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          disabled={!isMyTurn}
-                          onClick={() => openTradeWith()}
-                          className="py-1.5 rounded-lg bg-white/5 border border-white/10 disabled:opacity-35 text-lime-300 text-xs font-bold cursor-pointer truncate"
-                        >
-                          🤝 Сделка
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => setMobileTab('PLAYERS')}
                           className="py-1.5 rounded-lg bg-white/5 border border-white/10 text-neutral-200 text-xs font-bold cursor-pointer truncate"
                         >
-                          📊 Статы
+                          👥 Игроки / Договор
                         </button>
                       </div>
                     </div>
@@ -557,11 +612,9 @@ export const App: React.FC = () => {
             roomState={roomState}
             myPlayerId={profile.playerId}
             censored={censored}
-            nowMs={nowMs}
             creditModalOpen={creditModalOpen}
             onCloseCreditModal={() => setCreditModalOpen(false)}
             onAckChance={actions.ackChance}
-            onRespondTrade={actions.respondTrade}
             onTakeCredit={actions.takeCredit}
             onRepayCredit={actions.repayCredit}
           />
@@ -577,6 +630,27 @@ export const App: React.FC = () => {
           />
         </>
       )}
+
+      <ProfileModal
+        open={profileModalPlayerId !== null}
+        targetPlayerId={profileModalPlayerId}
+        myProfile={profile}
+        authAccount={authAccount}
+        onClose={() => setProfileModalPlayerId(null)}
+        onSelectPlayerId={(pid) => setProfileModalPlayerId(pid)}
+        onOpenAvatarCreator={() => setAvatarCreatorOpen(true)}
+        onUpdateProfile={updateLocalProfile}
+        onRegister={registerAccount}
+        onLogin={loginAccount}
+        onLogout={logoutAccount}
+      />
+
+      <AvatarCreatorModal
+        open={avatarCreatorOpen}
+        initialName={profile.name}
+        onClose={() => setAvatarCreatorOpen(false)}
+        onSaveAvatar={(dataUrl) => updateLocalProfile({ avatar: dataUrl })}
+      />
     </div>
   );
 };
