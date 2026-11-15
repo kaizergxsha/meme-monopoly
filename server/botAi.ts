@@ -1,5 +1,5 @@
 import { BOARD_CELLS, isBuyableCell } from '../shared/boardData.ts';
-import { TAUNTS } from '../shared/memeContent.ts';
+import { TAUNT_COOLDOWN_MS, TAUNTS } from '../shared/memeContent.ts';
 import {
   calculateLiquidationPotential,
   canBuildBranch,
@@ -96,8 +96,11 @@ export function tickBots(manager: GameManager) {
           manager.buildBranch(room, cur.id, c.id);
         }
       }
-      // Иногда кидает мемную насмешку
-      if (Math.random() < 0.12) {
+      // Иногда кидает мемную насмешку, только если общий кулдаун комнаты свободен
+      if (
+        Date.now() - (room.state.lastTauntAt ?? 0) >= TAUNT_COOLDOWN_MS &&
+        Math.random() < 0.06
+      ) {
         const t = TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
         manager.sendTaunt(room, cur.id, t.id);
       }

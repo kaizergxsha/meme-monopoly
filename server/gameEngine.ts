@@ -7,6 +7,7 @@ import {
   CHANCE_DECK,
   JACKPOT_QUOTES,
   MODE_INFO,
+  TAUNT_COOLDOWN_MS,
   TAUNTS,
   TOKEN_COLORS,
   TRADE_PROPOSAL_TEMPLATES,
@@ -276,6 +277,7 @@ export class GameManager {
       lastCardPopup: null,
       lastTransfer: null,
       lastPoliceArrestAt: null,
+      lastTauntAt: 0,
       winnerIds: [],
       winnerTeam: null,
       logs: [],
@@ -670,6 +672,7 @@ export class GameManager {
     room.state.lastCardPopup = null;
     room.state.lastTransfer = null;
     room.state.lastPoliceArrestAt = null;
+    room.state.lastTauntAt = 0;
     room.state.winnerIds = [];
     room.state.winnerTeam = null;
 
@@ -3348,13 +3351,16 @@ export class GameManager {
   }
 
   public sendTaunt(room: ServerRoom, playerId: string, tauntId: string) {
+    if (room.state.status !== 'PLAYING') return;
     const player = room.state.players.find((p) => p.id === playerId);
-    if (!player) return;
+    if (!player || player.isBankrupt) return;
     const now = Date.now();
-    if (now - player.lastTauntAt < 5000) return; // кулдаун 5 сек против спама
+    // Одновременно звук может применить только 1 человек в комнате, затем общий кулдаун 10 сек
+    if (now - (room.state.lastTauntAt ?? 0) < TAUNT_COOLDOWN_MS) return;
 
     const taunt = TAUNTS.find((t) => t.id === tauntId);
     if (!taunt) return;
+    room.state.lastTauntAt = now;
     player.lastTauntAt = now;
 
     this.addLog(room, 'TAUNT', taunt.text, taunt.cleanText, player);
