@@ -72,6 +72,8 @@ export interface BoardCellDef {
   cleanShortName?: string;
   subtitle: string;
   cleanSubtitle: string;
+  description: string;
+  cleanDescription: string;
   icon: string;
   price?: number; // in k
   branchCost?: number; // in k
@@ -205,9 +207,24 @@ export interface PendingDebt {
   cleanReason: string;
 }
 
+export type ChanceCardKind =
+  | 'PENALTY'
+  | 'BONUS'
+  | 'SHIELD'
+  | 'COLLECT_ALL'
+  | 'PAY_ALL'
+  | 'GOTO_START'
+  | 'GOTO_JAIL'
+  | 'SKIP_TURN'
+  | 'BRANCH_TAX'
+  | 'BRANCH_BONUS'
+  | 'EXTRA_TURN'
+  | 'STEAL_LEADER'
+  | 'FREE_PORTAL';
+
 export interface ChanceCardDef {
   id: string;
-  kind: 'PENALTY' | 'BONUS' | 'SHIELD' | 'COLLECT_ALL' | 'GOTO_START' | 'GOTO_JAIL' | 'SKIP_TURN' | 'BRANCH_TAX';
+  kind: ChanceCardKind;
   title: string;
   cleanTitle: string;
   description: string;
@@ -266,6 +283,15 @@ export interface GameLogEntry {
   reactions?: Record<string, number>;
 }
 
+export interface CashTransferAnim {
+  id: string;
+  fromId: string | 'BANK';
+  toId: string | 'BANK';
+  amount: number;
+  cellId: number;
+  timestamp: number;
+}
+
 export interface RoomState {
   code: string;
   hostId: string;
@@ -293,6 +319,8 @@ export interface RoomState {
   lastJackpotResult: JackpotResult | null;
   pendingDebt: PendingDebt | null;
   lastCardPopup: ActiveCardPopup | null;
+  lastTransfer?: CashTransferAnim | null;
+  lastPoliceArrestAt?: number | null;
   winnerIds: string[];
   winnerTeam: 0 | 1 | null;
   logs: GameLogEntry[];
