@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BOARD_CELLS } from '../../shared/boardData.ts';
+import { BOARD_CELLS, INDUSTRIES } from '../../shared/boardData.ts';
 import { JACKPOT_QUOTES } from '../../shared/memeContent.ts';
 import {
   checkTradeFairness,
+  formatMoney,
   getAntiStallStatus,
   getSpeedDieUnlockRound,
   getTokenWalkDurationMs,
@@ -12,6 +13,7 @@ import { DiceSkin, PlayerState, RoomState, SpeedDieFace, TradeSide } from '../..
 import { emitAckChance } from '../hooks/useGameSocket.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
 import { IndustryCardBanner } from './CardIllustration.tsx';
+import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 export interface TradeDraftState {
   open: boolean;
@@ -62,6 +64,8 @@ export interface CenterStageProps {
     request: TradeSide,
     onDone?: () => void
   ) => void;
+  onRespondTrade: (accept: boolean) => void;
+  onCastKickVote: (approve: boolean) => void;
 }
 
 const PIP_POSITIONS: Record<number, number[]> = {
@@ -221,9 +225,11 @@ export const CenterStage: React.FC<CenterStageProps> = ({
   tradeDraft,
   onChangeTradeDraft,
   onProposeTrade,
+  onRespondTrade,
+  onCastKickVote,
 }) => {
   const [chatDraft, setChatDraft] = useState('');
-  const [logFilter, setLogFilter] = useState<'ALL' | 'CHAT' | 'DICE'>('ALL');
+  const [logFilter, setLogFilter] = useState<'ALL' | 'CHAT' | 'DICE' | 'TRADE'>('ALL');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [muted, setMuted] = useState(() => soundEngine.isMuted());
   const [copiedCode, setCopiedCode] = useState(false);
@@ -283,6 +289,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
   const filteredLogs = roomState.logs.filter((l) => {
     if (logFilter === 'CHAT') return l.type === 'CHAT' || l.type === 'TAUNT';
     if (logFilter === 'DICE') return l.type === 'DICE';
+    if (logFilter === 'TRADE') return l.type === 'TRADE';
     return true;
   });
   const latestLogId = filteredLogs[filteredLogs.length - 1]?.id ?? '';
@@ -349,9 +356,235 @@ export const CenterStage: React.FC<CenterStageProps> = ({
       style={{ gridRow: '2 / span 9', gridColumn: '2 / span 9' }}
       className="min-w-0 min-h-0 bg-[#16171b] rounded-[8px] sm:rounded-[12px] m-[1px] sm:m-[2px] p-1.5 sm:p-2.5 md:p-3.5 flex flex-col justify-between overflow-hidden relative shadow-inner"
     >
-      {/* 1. ВЕРХНЯЯ ЗОНА: Белая карточка активного действия / Договора ИЛИ компактная пилюля времени */}
-      <div className="relative z-20 shrink-0 max-h-[75%] overflow-y-auto chat-scrollbar">
-        {tradeDraft.open && me ? (
+      {/* 1. ВЕРХНЯЯ ЗОНА: Плашка голосования за кик + Белая карточка активного действия / Договора ИЛИ компактная пилюля времени */}
+      <div className="relative z-20 shrink-0 max-h-[75%] overflow-y-auto chat-scrollbar space-y-1.5">
+        {roomState.activeKickVote && (() => {
+          const kv = roomState.activeKickVote!;
+          const target = roomState.players.find((p) => p.id === kv.targetId);
+          const initiator = roomState.players.find((p) => p.id === kv.initiatorId);
+          const totalEligible = kv.eligibleVoterIds.length;
+          const neededYes = Math.floor(totalEligible / 2) + 1;
+          const yesCount = kv.eligibleVoterIds.filter((id) => kv.votes[id] === true).length;
+          const noCount = kv.eligibleVoterIds.filter((id) => kv.votes[id] === false).length;
+          const secLeft = Math.max(0, Math.ceil((kv.expiresAt - nowMs) / 1000));
+          const isTarget = myPlayerId === kv.targetId;
+          const isEligible = kv.eligibleVoterIds.includes(myPlayerId);
+          const myVote = kv.votes[myPlayerId];
+
+          return (
+            <div
+              data-testid="kick-vote-banner"
+              className="rounded-xl bg-[#1c1a24] border border-rose-400/65 px-2.5 py-2 shadow-xl text-neutral-100 space-y-1.5 animate-action-card"
+            >
+              <div className="flex items-center justify-between gap-2 text-[11px] sm:text-xs">
+                <div className="flex items-center gap-1.5 min-w-0 font-extrabold text-rose-200">
+                  <span>🗳️</span>
+                  <span className="truncate flex items-center gap-1">
+                    <span>Кик</span>
+                    {target && <PlayerAvatar avatar={target.avatar} />}
+                    <span>{target?.name}</span>
+                  </span>
+                  <span className="text-[10px] font-normal text-neutral-400 hidden sm:inline">
+                    (инициатор {initiator?.name})
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-bold">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                    За {yesCount}/{neededYes}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">
+                    Против {noCount}
+                  </span>
+                  <span className="text-amber-300 tabular-nums">{secLeft}с</span>
+                </div>
+              </div>
+
+              {isTarget ? (
+                <div
+                  data-testid="kick-vote-excluded"
+                  className="text-[10.5px] font-bold text-amber-300 bg-amber-500/15 border border-amber-400/35 rounded-lg px-2 py-1 text-center"
+                >
+                  🚫 Против вас идёт голосование — вы не голосуете
+                </div>
+              ) : !isEligible ? (
+                <div className="text-[10px] text-neutral-400 text-center">
+                  Вы не участвуете в голосовании
+                </div>
+              ) : myVote !== undefined ? (
+                <div className="text-[10.5px] font-bold text-center text-neutral-300 bg-white/5 rounded-lg py-1">
+                  Ваш голос учтён: {myVote ? '👍 За кик' : '👎 Против'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="kick-vote-yes"
+                    onClick={() => onCastKickVote(true)}
+                    className="py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] cursor-pointer transition"
+                  >
+                    👍 За кик
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="kick-vote-no"
+                    onClick={() => onCastKickVote(false)}
+                    className="py-1 rounded-lg bg-white/10 hover:bg-white/20 text-neutral-200 font-bold text-[11px] cursor-pointer transition"
+                  >
+                    👎 Против
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {!tradeDraft.open && roomState.activeTrade ? (
+          /* АКТИВНЫЙ ДОГОВОР ВНУТРИ 9×9 БЕЗ ЗАМЫЛИВАНИЯ ДОСКИ СЗАДИ */
+          <div
+            data-testid="active-trade-card"
+            className="bg-[#1b1d26]/95 border-2 border-indigo-400/80 text-neutral-100 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 shadow-2xl animate-action-card space-y-2"
+          >
+            {(() => {
+              const tr = roomState.activeTrade!;
+              const sender = roomState.players.find((p) => p.id === tr.fromPlayerId);
+              const receiver = roomState.players.find((p) => p.id === tr.toPlayerId);
+              const isRecipient = tr.toPlayerId === myPlayerId;
+              const isSender = tr.fromPlayerId === myPlayerId;
+              const fairness = checkTradeFairness(roomState.cells, tr.offer, tr.request);
+              const secLeft = Math.max(0, Math.ceil((tr.expiresAt - nowMs) / 1000));
+
+              const leftSide = isRecipient ? tr.request : tr.offer;
+              const rightSide = isRecipient ? tr.offer : tr.request;
+              const leftTitle = isRecipient
+                ? '📤 Вы отдаёте'
+                : isSender
+                ? '📤 Вы отдаёте'
+                : `📤 ${sender?.name} отдаёт`;
+              const rightTitle = isRecipient
+                ? '📥 Вы получаете'
+                : isSender
+                ? `📥 От ${receiver?.name}`
+                : `📥 ${sender?.name} получает`;
+
+              const renderSummaryBadges = (side: TradeSide, tone: 'give' | 'get') => {
+                const empty =
+                  side.cash === 0 && side.shields === 0 && side.propertyIds.length === 0;
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {side.propertyIds.map((cid) => {
+                      const def = BOARD_CELLS[cid];
+                      const grp = def.groupId ? INDUSTRIES[def.groupId] : null;
+                      return (
+                        <span
+                          key={cid}
+                          style={{ borderColor: grp?.accentHex || '#64748b' }}
+                          className={`px-1.5 py-0.5 rounded border-l-4 text-[10px] font-bold ${
+                            tone === 'give'
+                              ? 'bg-rose-500/20 text-rose-100'
+                              : 'bg-emerald-500/20 text-emerald-100'
+                          }`}
+                        >
+                          {txt(def.shortName || def.name, def.cleanName, censored)}
+                        </span>
+                      );
+                    })}
+                    {side.cash > 0 && (
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold tabular-nums ${
+                          tone === 'give'
+                            ? 'bg-rose-500/25 text-rose-200'
+                            : 'bg-emerald-500/25 text-emerald-200'
+                        }`}
+                      >
+                        💵 {formatMoney(side.cash)}
+                      </span>
+                    )}
+                    {side.shields > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-sky-500/25 text-sky-200 text-[10px] font-extrabold">
+                        🛡️ ×{side.shields}
+                      </span>
+                    )}
+                    {empty && (
+                      <span className="text-[10px] text-neutral-400 italic">ничего</span>
+                    )}
+                  </div>
+                );
+              };
+
+              return (
+                <>
+                  <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0 text-xs font-extrabold">
+                      <span>🤝</span>
+                      <span className="truncate flex items-center gap-1">
+                        {isRecipient ? (
+                          <>
+                            <span>Предложение от</span>
+                            {sender && <PlayerAvatar avatar={sender.avatar} />}
+                            <span>{sender?.name}</span>
+                          </>
+                        ) : (
+                          `Договор ${sender?.name} ⇄ ${receiver?.name}`
+                        )}
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 text-[10px] font-black tabular-nums shrink-0">
+                      ⏱ {secLeft}с
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="rounded-xl bg-rose-950/35 border border-rose-400/45 p-2 space-y-1">
+                      <div className="text-[10px] font-black text-rose-300 flex justify-between">
+                        <span>{leftTitle}</span>
+                        <span className="tabular-nums">
+                          {formatMoney(isRecipient ? fairness.requestValue : fairness.offerValue)}
+                        </span>
+                      </div>
+                      {renderSummaryBadges(leftSide, 'give')}
+                    </div>
+                    <div className="rounded-xl bg-emerald-950/35 border border-emerald-400/45 p-2 space-y-1">
+                      <div className="text-[10px] font-black text-emerald-300 flex justify-between">
+                        <span>{rightTitle}</span>
+                        <span className="tabular-nums">
+                          {formatMoney(isRecipient ? fairness.offerValue : fairness.requestValue)}
+                        </span>
+                      </div>
+                      {renderSummaryBadges(rightSide, 'get')}
+                    </div>
+                  </div>
+
+                  {isRecipient ? (
+                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        data-testid="trade-accept-btn"
+                        onClick={() => onRespondTrade(true)}
+                        className="py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer transition"
+                      >
+                        ✅ Принять сделку
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="trade-decline-btn"
+                        onClick={() => onRespondTrade(false)}
+                        className="py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs cursor-pointer transition"
+                      >
+                        ❌ Отклонить
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center text-[10.5px] text-indigo-200 font-semibold flex items-center justify-center gap-1">
+                      <span>⏳ Ожидаем решения</span>
+                      {receiver && <PlayerAvatar avatar={receiver.avatar} />}
+                      <span>{receiver?.name}... (подсвечено на доске сзади)</span>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        ) : tradeDraft.open && me ? (
           /* БЕЛАЯ КАРТОЧКА «ДОГОВОР» ВНУТРИ ДОСКИ (1:1 кадры 10–12 видео!) */
           <div className="bg-white text-neutral-900 rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-2xl animate-action-card space-y-1.5 sm:space-y-2.5">
             <div className="flex items-center justify-between text-[11px] sm:text-xs border-b border-neutral-200 pb-1 sm:pb-1.5">
@@ -361,7 +594,9 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                 <span>•</span>
                 <span>{roomState.round} раунд</span>
               </div>
-              <span className="font-extrabold text-xs sm:text-sm text-neutral-900">Договор</span>
+              <span data-testid="trade-draft-header" className="font-extrabold text-xs sm:text-sm text-neutral-900">
+                Договор ({Math.max(0, 3 - (roomState.tradesProposedThisTurn ?? 0))}/3 за ход)
+              </span>
               <button
                 onClick={() => onChangeTradeDraft((p) => ({ ...p, open: false }))}
                 className="text-neutral-400 hover:text-neutral-800 font-bold px-1 cursor-pointer"
@@ -373,7 +608,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
             {/* Переключатель партнёра */}
             <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px] sm:text-xs">
               <div className="flex items-center gap-1 font-bold">
-                <span>{me.avatar}</span>
+                <PlayerAvatar avatar={me.avatar} />
                 <span style={{ color: me.color }}>Вы</span>
                 <span className="text-neutral-500 font-normal hidden sm:inline">предлагаете</span>
               </div>
@@ -389,13 +624,14 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         reqCash: 0,
                       }))
                     }
-                    className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold transition cursor-pointer ${
+                    className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold transition cursor-pointer inline-flex items-center gap-1 ${
                       tradeDraft.partnerId === op.id
                         ? 'bg-neutral-900 text-white'
                         : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                     }`}
                   >
-                    {op.avatar} {op.name}
+                    <PlayerAvatar avatar={op.avatar} />
+                    <span>{op.name}</span>
                   </button>
                 ))}
               </div>
@@ -551,6 +787,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                 <div className="flex items-center justify-center gap-2 pt-0.5">
                   <button
                     disabled={
+                      (roomState.tradesProposedThisTurn ?? 0) >= 3 ||
                       (roomState.settings.fairTradeLimit && !tradeFairness.fair) ||
                       (tradeFairness.offerValue === 0 && tradeFairness.requestValue === 0)
                     }
@@ -603,9 +840,9 @@ export const CenterStage: React.FC<CenterStageProps> = ({
               <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
                 <span
                   style={{ borderColor: curPlayer.color, backgroundColor: `${curPlayer.color}33` }}
-                  className="w-4 h-4 sm:w-5 sm:h-5 rounded-full border flex items-center justify-center text-[10px] sm:text-[11px] shrink-0"
+                  className="w-4 h-4 sm:w-5 sm:h-5 rounded-full border flex items-center justify-center text-[10px] sm:text-[11px] shrink-0 overflow-hidden"
                 >
-                  {curPlayer.avatar}
+                  <PlayerAvatar avatar={curPlayer.avatar} fill />
                 </span>
                 <span className="font-extrabold text-xs sm:text-sm text-white truncate">
                   {roomState.phase === 'PRE_ROLL'
@@ -804,8 +1041,9 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         {creditor ? (
                           <>
                             Получатель:{' '}
-                            <b style={{ color: creditor.color }} className="font-extrabold">
-                              {creditor.avatar} {creditor.name}
+                            <b style={{ color: creditor.color }} className="font-extrabold inline-flex items-center gap-1">
+                              <PlayerAvatar avatar={creditor.avatar} />
+                              <span>{creditor.name}</span>
                             </b>
                           </>
                         ) : (
@@ -1081,10 +1319,16 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         </>
                       )}
                     </span>
-                    <span className="text-neutral-600 font-semibold truncate">
-                      {leader
-                        ? `👑 ${leader.avatar} ${leader.name}`
-                        : `Цена поля $${def.price ?? auc.currentBid}`}
+                    <span className="text-neutral-600 font-semibold truncate inline-flex items-center gap-1">
+                      {leader ? (
+                        <>
+                          <span>👑</span>
+                          <PlayerAvatar avatar={leader.avatar} />
+                          <span>{leader.name}</span>
+                        </>
+                      ) : (
+                        `Цена поля $${def.price ?? auc.currentBid}`
+                      )}
                     </span>
                   </div>
 
@@ -1112,7 +1356,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                               : 'bg-neutral-50 border-neutral-200 text-neutral-600'
                           }`}
                         >
-                          <span>{isLead ? '👑' : isTurn ? '🎯' : p.avatar}</span>
+                          <span>{isLead ? '👑' : isTurn ? '🎯' : <PlayerAvatar avatar={p.avatar} />}</span>
                           <span className="max-w-[70px] truncate">{p.name}</span>
                         </span>
                       );
@@ -1147,8 +1391,15 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                   ) : (
                     <div className="text-center text-[10px] sm:text-[11px] font-semibold text-neutral-600 bg-neutral-100 rounded-lg py-1 px-2">
                       ⏳ Сейчас торгуется:{' '}
-                      <b style={{ color: currentBidder?.color }} className="font-extrabold">
-                        {currentBidder ? `${currentBidder.avatar} ${currentBidder.name}` : '...'}
+                      <b style={{ color: currentBidder?.color }} className="font-extrabold inline-flex items-center gap-1">
+                        {currentBidder ? (
+                          <>
+                            <PlayerAvatar avatar={currentBidder.avatar} />
+                            <span>{currentBidder.name}</span>
+                          </>
+                        ) : (
+                          '...'
+                        )}
                       </b>{' '}
                       ({secLeft}с)
                     </div>
@@ -1176,8 +1427,9 @@ export const CenterStage: React.FC<CenterStageProps> = ({
               {curPlayer && roomState.status === 'PLAYING' && (
                 <div className="bg-[#23252c]/95 border border-white/10 text-neutral-200 rounded-full px-2 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-semibold shadow flex items-center gap-1 sm:gap-1.5 max-w-[145px] sm:max-w-none">
                   <span className="hidden sm:inline">{isWalkingAfterRoll ? '👣 Шагает:' : 'Ходит:'}</span>
-                  <span style={{ color: curPlayer.color }} className="font-extrabold truncate">
-                    {curPlayer.avatar} {curPlayer.name}
+                  <span style={{ color: curPlayer.color }} className="font-extrabold truncate inline-flex items-center gap-1">
+                    <PlayerAvatar avatar={curPlayer.avatar} />
+                    <span>{curPlayer.name}</span>
                   </span>
                 </div>
               )}
@@ -1257,13 +1509,16 @@ export const CenterStage: React.FC<CenterStageProps> = ({
         <div className="flex items-center justify-end gap-1 mb-0.5 sm:mb-1">
           {(
             [
-              { id: 'ALL', label: 'Все' },
-              { id: 'CHAT', label: 'Чат' },
-              { id: 'DICE', label: 'Кубики' },
+              { id: 'ALL', label: 'Все', testId: 'log-filter-all' },
+              { id: 'CHAT', label: 'Чат', testId: 'log-filter-chat' },
+              { id: 'DICE', label: 'Кубики', testId: 'log-filter-dice' },
+              { id: 'TRADE', label: 'Договоры', testId: 'log-filter-trade' },
             ] as const
           ).map((f) => (
             <button
               key={f.id}
+              type="button"
+              data-testid={f.testId}
               onClick={() => setLogFilter(f.id)}
               className={`px-1.5 sm:px-2 py-0.5 rounded text-[9.5px] sm:text-[10px] font-semibold transition cursor-pointer ${
                 logFilter === f.id

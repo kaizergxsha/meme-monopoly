@@ -1,24 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BOARD_CELLS, INDUSTRIES } from '../../shared/boardData.ts';
 import {
-  checkTradeFairness,
   formatMoney,
   isSpeedRulesMode,
   txt,
 } from '../../shared/rules.ts';
-import { RoomState, TradeSide } from '../../shared/types.ts';
+import { RoomState } from '../../shared/types.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
 import { ChanceCardIllustration } from './CardIllustration.tsx';
+import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 interface ModalsProps {
   roomState: RoomState;
   myPlayerId: string;
   censored: boolean;
-  nowMs: number;
   creditModalOpen: boolean;
   onCloseCreditModal: () => void;
   onAckChance: () => void;
-  onRespondTrade: (accept: boolean) => void;
   onTakeCredit: () => void;
   onRepayCredit: () => void;
 }
@@ -27,11 +24,9 @@ export const Modals: React.FC<ModalsProps> = ({
   roomState,
   myPlayerId,
   censored,
-  nowMs,
   creditModalOpen,
   onCloseCreditModal,
   onAckChance,
-  onRespondTrade,
   onTakeCredit,
   onRepayCredit,
 }) => {
@@ -141,9 +136,9 @@ export const Modals: React.FC<ModalsProps> = ({
                       borderColor: lp?.color || '#52525b',
                       backgroundColor: `${lp?.color || '#52525b'}22`,
                     }}
-                    className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-sm shrink-0"
+                    className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-sm shrink-0 overflow-hidden"
                   >
-                    {lp?.avatar || '🎲'}
+                    <PlayerAvatar avatar={lp?.avatar || '🎲'} fill />
                   </span>
                   <span className="min-w-0 truncate font-semibold">
                     <span style={{ color: lp?.color || '#18181b' }} className="font-black">
@@ -228,286 +223,220 @@ export const Modals: React.FC<ModalsProps> = ({
         );
       })()}
 
-      {/* Аукцион, Портал и Казино теперь отображаются прямо внутри верхней карточки 9×9 без перекрытия доски! */}
+      {/* Аукцион, Портал, Казино и Входящая сделка теперь отображаются прямо внутри верхней карточки 9×9 без перекрытия и замыливания доски! */}
 
-      {/* 5. ВХОДЯЩИЙ ДОГОВОР (ОБМЕН) ДЛЯ ПОЛУЧАТЕЛЯ */}
-      {roomState.activeTrade && roomState.activeTrade.toPlayerId === myPlayerId && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="w-full max-w-xl max-h-[90dvh] overflow-y-auto bg-[#1b1c22] border-2 border-indigo-400/80 rounded-2xl p-4 sm:p-5 shadow-[0_24px_70px_rgba(0,0,0,0.85)] space-y-3.5 text-neutral-100">
-            {(() => {
-              const tr = roomState.activeTrade!;
-              const sender = roomState.players.find((p) => p.id === tr.fromPlayerId);
-              const incomingFairness = checkTradeFairness(roomState.cells, tr.offer, tr.request);
-              const secLeft = Math.max(0, Math.ceil((tr.expiresAt - nowMs) / 1000));
-              const diff = incomingFairness.offerValue - incomingFairness.requestValue;
+      {/* 3. ВИЗУАЛЬНЫЙ ОТЧЁТ ПО БАНКОВСКОМУ КРЕДИТУ */}
+      {creditModalOpen && me && (() => {
+        const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
+        const unlockRound = isSpeedRulesMode(roomState.settings) ? 10 : 3;
+        const retroLocked = roomState.settings.retroRules || roomState.settings.mode === 'retro';
+        const cooldownLeft =
+          !me.credit && me.creditCooldownUntilRound && roomState.round < me.creditCooldownUntilRound
+            ? me.creditCooldownUntilRound - roomState.round
+            : 0;
+        const canTakeNow =
+          !me.credit &&
+          isMyTurn &&
+          roomState.settings.creditEnabled &&
+          roomState.round >= unlockRound &&
+          cooldownLeft === 0;
 
-              const renderSideCards = (side: TradeSide, isGain: boolean) => {
-                const isEmpty =
-                  side.cash === 0 && side.shields === 0 && side.propertyIds.length === 0;
-
-                return (
-                  <div className="space-y-2">
-                    {side.cash > 0 && (
-                      <div
-                        className={`rounded-xl border px-3 py-2 flex items-center justify-between gap-2 ${
-                          isGain
-                            ? 'bg-emerald-500/15 border-emerald-400/45 text-emerald-100'
-                            : 'bg-rose-500/15 border-rose-400/45 text-rose-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-lg leading-none">{isGain ? '💵' : '💸'}</span>
-                          <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-wide opacity-75 font-bold">
-                              Наличные
-                            </div>
-                            <div className="text-sm font-black tabular-nums">
-                              {isGain ? '+' : '-'}
-                              {formatMoney(side.cash)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {side.shields > 0 && (
-                      <div className="rounded-xl border border-sky-400/45 bg-sky-500/15 px-3 py-2 flex items-center gap-2 text-sky-100">
-                        <span className="text-lg leading-none">🛡️</span>
-                        <div>
-                          <div className="text-xs font-extrabold">
-                            Крыша от братков ×{side.shields}
-                          </div>
-                          <div className="text-[10px] opacity-75">Оценка $1 000 за щит</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {side.propertyIds.map((cid) => {
-                      const def = BOARD_CELLS[cid];
-                      const grp = def.groupId ? INDUSTRIES[def.groupId] : null;
-                      const rt = roomState.cells[cid];
-                      const baseRent = def.rents?.[0] ?? 0;
-
-                      const completesMonopoly =
-                        isGain &&
-                        Boolean(def.groupId) &&
-                        BOARD_CELLS.filter((c) => c.groupId === def.groupId).every((c) => {
-                          if (tr.request.propertyIds.includes(c.id)) return false;
-                          return (
-                            roomState.cells[c.id]?.ownerId === myPlayerId ||
-                            tr.offer.propertyIds.includes(c.id)
-                          );
-                        });
-
-                      return (
-                        <div
-                          key={cid}
-                          className="rounded-xl overflow-hidden border border-white/15 bg-[#23252d] shadow-sm"
-                        >
-                          <div
-                            style={{ backgroundColor: grp?.accentHex || '#475569' }}
-                            className="px-2.5 py-1 flex items-center justify-between gap-2 text-[10px] font-extrabold text-white"
-                          >
-                            <span className="truncate flex items-center gap-1">
-                              <span>{def.icon}</span>
-                              <span>{grp ? txt(grp.name, grp.cleanName, censored) : 'Актив'}</span>
-                            </span>
-                            <span className="shrink-0 bg-black/30 px-1.5 py-0.5 rounded">
-                              {rt?.isMortgaged
-                                ? '🔒 Залог'
-                                : `$${def.price ?? 0}`}
-                            </span>
-                          </div>
-                          <div className="px-2.5 py-1.5 space-y-0.5">
-                            <div className="text-xs font-extrabold text-white leading-tight">
-                              {txt(def.name, def.cleanName, censored)}
-                            </div>
-                            <div className="flex items-center justify-between text-[10px] text-neutral-400">
-                              <span>
-                                {def.type === 'IT_UTILITY'
-                                  ? 'Рента: 🎲×100 / ×250'
-                                  : `Базовая рента: $${baseRent}`}
-                              </span>
-                              {completesMonopoly && (
-                                <span className="text-amber-300 font-black">⭐ МОНОПОЛИЯ!</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {isEmpty && (
-                      <div className="rounded-xl border border-dashed border-white/15 px-3 py-4 text-center text-xs text-neutral-400">
-                        {isGain ? 'Ничего (пусто)' : 'Ничего (подарок)'}
-                      </div>
-                    )}
+        return (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div
+              data-testid="credit-visual-report"
+              className="w-full max-w-md bg-[#171923] border border-amber-400/60 rounded-2xl p-5 shadow-2xl space-y-4 text-slate-100"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div>
+                  <h3 className="text-base font-black text-amber-300 flex items-center gap-2">
+                    <span>🏦</span>
+                    <span>Визуальный отчёт по кредиту</span>
+                  </h3>
+                  <div className="text-[11px] text-slate-400">
+                    Текущий раунд: <b className="text-slate-200">{roomState.round}</b> · Ставка: +20%
                   </div>
-                );
-              };
-
-              return (
-                <>
-                  <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        style={{
-                          borderColor: sender?.color || '#818cf8',
-                          backgroundColor: `${sender?.color || '#818cf8'}28`,
-                        }}
-                        className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-base shrink-0"
-                      >
-                        {sender?.avatar || '🤝'}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-[10.5px] uppercase tracking-wider text-indigo-300 font-extrabold">
-                          Входящее предложение обмена
-                        </div>
-                        <h3 className="text-sm sm:text-base font-black text-white truncate">
-                          От{' '}
-                          <span style={{ color: sender?.color || '#fff' }}>{sender?.name}</span>{' '}
-                          <span className="text-neutral-400 font-normal">→ вам</span>
-                        </h3>
-                      </div>
-                    </div>
-                    <span className="px-2.5 py-1 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-200 font-black text-xs shrink-0 tabular-nums">
-                      ⏳ {secLeft}с
-                    </span>
-                  </div>
-
-                  {/* Сводка оценки сделки */}
-                  <div className="rounded-xl bg-black/35 border border-white/10 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-emerald-300 font-extrabold">
-                        Ты получишь: {formatMoney(incomingFairness.offerValue)}
-                      </span>
-                      <span className="text-neutral-500">⇄</span>
-                      <span className="text-rose-300 font-extrabold">
-                        Ты отдашь: {formatMoney(incomingFairness.requestValue)}
-                      </span>
-                    </div>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
-                        diff > 0
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
-                          : diff < 0
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
-                          : 'bg-white/10 text-neutral-300 border border-white/15'
-                      }`}
-                    >
-                      {diff > 0
-                        ? `📈 В плюс +${formatMoney(diff)}`
-                        : diff < 0
-                        ? `📉 Разница -${formatMoney(Math.abs(diff))}`
-                        : '⚖️ Равноценно 1:1'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="bg-emerald-950/35 border border-emerald-500/45 rounded-xl p-3 space-y-2">
-                      <div className="flex items-center justify-between font-black text-emerald-300 text-xs border-b border-emerald-500/25 pb-1.5">
-                        <span>📥 ТЫ ПОЛУЧАЕШЬ</span>
-                        <span className="tabular-nums">{formatMoney(incomingFairness.offerValue)}</span>
-                      </div>
-                      {renderSideCards(tr.offer, true)}
-                    </div>
-
-                    <div className="bg-rose-950/35 border border-rose-500/45 rounded-xl p-3 space-y-2">
-                      <div className="flex items-center justify-between font-black text-rose-300 text-xs border-b border-rose-500/25 pb-1.5">
-                        <span>📤 ТЫ ОТДАЁШЬ</span>
-                        <span className="tabular-nums">{formatMoney(incomingFairness.requestValue)}</span>
-                      </div>
-                      {renderSideCards(tr.request, false)}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => onRespondTrade(true)}
-                      className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm cursor-pointer shadow-md transition"
-                    >
-                      ✅ Принять сделку
-                    </button>
-                    <button
-                      onClick={() => onRespondTrade(false)}
-                      className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs sm:text-sm cursor-pointer transition"
-                    >
-                      ❌ Отклонить
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* 3. МОДАЛКА БАНКОВСКОГО КРЕДИТА */}
-      {creditModalOpen && me && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-amber-500/60 rounded-2xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-amber-300">
-                🏦 Банковский Кредит
-              </h3>
-              <button
-                onClick={onCloseCreditModal}
-                className="px-2 py-1 rounded-lg bg-slate-800 text-xs cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {me.credit ? (
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
-                <div className="text-xs text-slate-300">
-                  Активный займ: нужно вернуть{' '}
-                  <b className="text-rose-400">{formatMoney(me.credit.paybackAmount)}</b> до{' '}
-                  <b>{me.credit.dueRound}-го раунда</b> (сейчас {roomState.round}-й раунд).
                 </div>
                 <button
-                  disabled={
-                    me.cash < me.credit.paybackAmount ||
-                    roomState.settings.retroRules ||
-                    roomState.settings.mode === 'retro'
-                  }
-                  onClick={() => {
-                    onRepayCredit();
-                    onCloseCreditModal();
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-black text-xs cursor-pointer"
+                  onClick={onCloseCreditModal}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold cursor-pointer"
                 >
-                  {roomState.settings.retroRules
-                    ? 'В Ретро-режиме досрочное погашение недоступно'
-                    : `💸 Погасить досрочно (${formatMoney(me.credit.paybackAmount)})`}
+                  ✕
                 </button>
               </div>
-            ) : (
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3 text-xs text-slate-300">
-                <p>
-                  Получи мгновенно <b className="text-emerald-400">+5.000k</b> на руки. Возврат с
-                  процентами — <b className="text-amber-300">6.000k</b> через{' '}
-                  {isSpeedRulesMode(roomState.settings) ? 6 : 8} раундов.
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  Доступен в свой ход с {isSpeedRulesMode(roomState.settings) ? 10 : 3}-го раунда
-                  (повторно через 3 раунда после возврата).
-                </p>
-                <button
-                  disabled={!isMyTurn || !roomState.settings.creditEnabled}
-                  onClick={() => {
-                    onTakeCredit();
-                    onCloseCreditModal();
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-black text-xs cursor-pointer"
-                >
-                  🏦 Взять +5.000k прямо сейчас
-                </button>
-              </div>
-            )}
+
+              {me.credit ? (() => {
+                const takenAt = me.credit.takenAtRound ?? Math.max(1, me.credit.dueRound - defaultTerm);
+                const totalRounds = Math.max(1, me.credit.dueRound - takenAt);
+                const roundsLeft = Math.max(0, me.credit.dueRound - roomState.round);
+                const elapsed = Math.max(0, Math.min(totalRounds, totalRounds - roundsLeft));
+                const termPct = Math.round((elapsed / totalRounds) * 100);
+                const cashPct = Math.min(
+                  100,
+                  Math.round((Math.max(0, me.cash) / me.credit.paybackAmount) * 100)
+                );
+                const missingCash = Math.max(0, me.credit.paybackAmount - me.cash);
+                const urgent = roundsLeft <= 2;
+
+                return (
+                  <div className="space-y-3">
+                    {/* 3 KPI-карточки */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-center">
+                        <div className="text-[10px] text-slate-400 uppercase font-bold">Тело займа</div>
+                        <div className="text-sm font-black text-emerald-300 tabular-nums mt-0.5">
+                          {formatMoney(me.credit.principal)}
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-center">
+                        <div className="text-[10px] text-slate-400 uppercase font-bold">Процент</div>
+                        <div className="text-sm font-black text-amber-300 tabular-nums mt-0.5">
+                          +{formatMoney(me.credit.paybackAmount - me.credit.principal)}
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-rose-500/10 border border-rose-400/35 p-2.5 text-center">
+                        <div className="text-[10px] text-rose-200 uppercase font-bold">К возврату</div>
+                        <div className="text-sm font-black text-rose-300 tabular-nums mt-0.5">
+                          {formatMoney(me.credit.paybackAmount)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Шкала срока и дедлайна */}
+                    <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-300">
+                          ⏳ Срок ({takenAt}р → {me.credit.dueRound}р)
+                        </span>
+                        <span
+                          className={`font-black px-2 py-0.5 rounded-full text-[10px] ${
+                            urgent
+                              ? 'bg-rose-500/25 text-rose-300'
+                              : 'bg-amber-500/20 text-amber-300'
+                          }`}
+                        >
+                          Осталось {roundsLeft} р.
+                        </span>
+                      </div>
+                      <div className="h-2.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            urgent
+                              ? 'bg-gradient-to-r from-orange-500 to-rose-500'
+                              : 'bg-gradient-to-r from-emerald-400 to-amber-400'
+                          }`}
+                          style={{ width: `${termPct}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>Прошло: {elapsed} / {totalRounds} р.</span>
+                        <span>Дедлайн: {me.credit.dueRound}-й раунд</span>
+                      </div>
+                    </div>
+
+                    {/* Шкала готовности наличных к погашению */}
+                    <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-300">💵 Покрытие наличкой</span>
+                        <span
+                          className={`font-black text-[11px] ${
+                            missingCash === 0 ? 'text-emerald-400' : 'text-amber-300'
+                          }`}
+                        >
+                          {missingCash === 0 ? 'Хватает на закрытие ✓' : `Не хватает ${formatMoney(missingCash)}`}
+                        </span>
+                      </div>
+                      <div className="h-2.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            missingCash === 0 ? 'bg-emerald-400' : 'bg-sky-400'
+                          }`}
+                          style={{ width: `${cashPct}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-400 tabular-nums">
+                        <span>Баланс: {formatMoney(me.cash)}</span>
+                        <span>{cashPct}% от долга</span>
+                      </div>
+                    </div>
+
+                    <button
+                      disabled={me.cash < me.credit.paybackAmount || retroLocked}
+                      onClick={() => {
+                        onRepayCredit();
+                        onCloseCreditModal();
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-black text-xs cursor-pointer transition"
+                    >
+                      {retroLocked
+                        ? 'В Ретро-режиме досрочное погашение недоступно'
+                        : `💸 Погасить досрочно (${formatMoney(me.credit.paybackAmount)})`}
+                    </button>
+                  </div>
+                );
+              })() : (
+                <div className="space-y-3 text-xs text-slate-300">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-emerald-500/10 border border-emerald-400/30 p-2.5 text-center">
+                      <div className="text-[10px] text-emerald-200 uppercase font-bold">На руки</div>
+                      <div className="text-sm font-black text-emerald-300 mt-0.5">+$5 000</div>
+                    </div>
+                    <div className="rounded-xl bg-white/[0.04] border border-white/10 p-2.5 text-center">
+                      <div className="text-[10px] text-slate-400 uppercase font-bold">Переплата</div>
+                      <div className="text-sm font-black text-amber-300 mt-0.5">+20% ($1 000)</div>
+                    </div>
+                    <div className="rounded-xl bg-rose-500/10 border border-rose-400/30 p-2.5 text-center">
+                      <div className="text-[10px] text-rose-200 uppercase font-bold">Возврат</div>
+                      <div className="text-sm font-black text-rose-300 mt-0.5">$6 000 · {defaultTerm}р</div>
+                    </div>
+                  </div>
+
+                  {/* Визуальный чек-лист доступности */}
+                  <div className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-1.5 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Кредиты в комнате</span>
+                      <span className={roomState.settings.creditEnabled ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                        {roomState.settings.creditEnabled ? '✓ Разрешены' : '✕ Отключены'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Доступно с {unlockRound}-го раунда</span>
+                      <span className={roomState.round >= unlockRound ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
+                        {roomState.round >= unlockRound
+                          ? '✓ Открыт'
+                          : `Через ${unlockRound - roomState.round} р.`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Откат после прошлого займа</span>
+                      <span className={cooldownLeft === 0 ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
+                        {cooldownLeft === 0 ? '✓ Готов' : `Ещё ${cooldownLeft} р.`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Право хода</span>
+                      <span className={isMyTurn ? 'text-emerald-400 font-bold' : 'text-slate-400 font-bold'}>
+                        {isMyTurn ? '✓ Ваш ход' : 'Ожидание своего хода'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    disabled={!canTakeNow}
+                    onClick={() => {
+                      onTakeCredit();
+                      onCloseCreditModal();
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-slate-950 font-black text-xs cursor-pointer transition"
+                  >
+                    🏦 Взять +5.000k прямо сейчас
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 };

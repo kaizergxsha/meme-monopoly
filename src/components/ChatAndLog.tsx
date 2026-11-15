@@ -9,13 +9,14 @@ interface ChatAndLogProps {
 }
 
 export const ChatAndLog: React.FC<ChatAndLogProps> = ({ logs, censored, onSendChat }) => {
-  const [filter, setFilter] = useState<'ALL' | 'CHAT' | 'DICE'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'CHAT' | 'DICE' | 'TRADE'>('ALL');
   const [draft, setDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const filteredLogs = logs.filter((l) => {
     if (filter === 'CHAT') return l.type === 'CHAT' || l.type === 'TAUNT';
     if (filter === 'DICE') return l.type === 'DICE';
+    if (filter === 'TRADE') return l.type === 'TRADE';
     return true;
   });
 
@@ -33,11 +34,12 @@ export const ChatAndLog: React.FC<ChatAndLogProps> = ({ logs, censored, onSendCh
   return (
     <aside className="w-[265px] xl:w-[295px] shrink-0 h-full bg-slate-900/95 border-l border-slate-800 flex flex-col p-2.5 overflow-hidden">
       {/* Переключатель вкладок */}
-      <div className="grid grid-cols-3 gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 mb-2">
+      <div className="grid grid-cols-4 gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 mb-2">
         {[
           { id: 'ALL' as const, label: '📜 Всё' },
           { id: 'CHAT' as const, label: '💬 Чат' },
           { id: 'DICE' as const, label: '🎲 Броски' },
+          { id: 'TRADE' as const, label: '🤝 Договоры' },
         ].map((tab) => (
           <button
             key={tab.id}

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { txt } from '../../shared/rules.ts';
 import { BankruptcyAnimationEvent, RoomState } from '../../shared/types.ts';
+import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 interface BankruptcyOverlayProps {
   anim: BankruptcyAnimationEvent | null;
@@ -46,8 +47,9 @@ export const BankruptcyOverlay: React.FC<BankruptcyOverlayProps> = ({
                 <div className="text-5xl md:text-7xl font-black tracking-widest text-rose-500 uppercase drop-shadow-[0_4px_12px_rgba(244,63,94,0.8)]">
                   ПОТРАЧЕНО
                 </div>
-                <div className="text-lg md:text-2xl font-extrabold text-slate-200 mt-3">
-                  {anim.loserAvatar} {anim.loserName} — WASTED
+                <div className="text-lg md:text-2xl font-extrabold text-slate-200 mt-3 flex items-center justify-center gap-2">
+                  <PlayerAvatar avatar={anim.loserAvatar} />
+                  <span>{anim.loserName} — WASTED</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-1">
                   Причина: {txt(anim.reason, anim.cleanReason, censored)} • Раздел: {anim.winnerName}
@@ -75,8 +77,9 @@ export const BankruptcyOverlay: React.FC<BankruptcyOverlayProps> = ({
                   <div className="text-sm uppercase tracking-widest text-slate-400">
                     Главный мамонт выпуска
                   </div>
-                  <div className="text-xl font-black text-rose-400">
-                    {anim.loserAvatar} {anim.loserName}
+                  <div className="text-xl font-black text-rose-400 flex items-center justify-center gap-2">
+                    <PlayerAvatar avatar={anim.loserAvatar} />
+                    <span>{anim.loserName}</span>
                   </div>
                 </div>
               </div>
@@ -87,8 +90,10 @@ export const BankruptcyOverlay: React.FC<BankruptcyOverlayProps> = ({
             <div className="w-full h-full bg-gradient-to-br from-sky-900/90 via-indigo-950/95 to-amber-900/90 flex flex-col items-center justify-center p-6 text-center">
               <div className="animate-wasted bg-amber-400 text-slate-950 rounded-3xl border-4 border-white px-12 py-8 shadow-2xl">
                 <div className="text-6xl md:text-8xl font-black italic tracking-tight">ВСЁ!</div>
-                <div className="text-base md:text-xl font-black mt-3">
-                  Пара-пара-пам! {anim.loserAvatar} {anim.loserName} уехал на завод!
+                <div className="text-base md:text-xl font-black mt-3 flex items-center justify-center gap-2">
+                  <span>Пара-пара-пам!</span>
+                  <PlayerAvatar avatar={anim.loserAvatar} />
+                  <span>{anim.loserName} уехал на завод!</span>
                 </div>
                 <div className="text-xs font-bold opacity-80 mt-1">
                   Спонсор выпуска: {anim.winnerName}
@@ -118,7 +123,9 @@ export const BankruptcyOverlay: React.FC<BankruptcyOverlayProps> = ({
                     key={w.id}
                     className="flex items-center justify-center gap-3 bg-slate-800/90 border border-amber-400/50 rounded-2xl py-3 px-4"
                   >
-                    <span className="text-3xl">{w.avatar}</span>
+                    <span className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-3xl shrink-0">
+                      <PlayerAvatar avatar={w.avatar} fill />
+                    </span>
                     <span className="text-lg font-black text-white">{w.name}</span>
                   </div>
                 ))}

@@ -186,6 +186,8 @@ export interface BoardGridProps {
     request: TradeSide,
     onDone?: () => void
   ) => void;
+  onRespondTrade: (accept: boolean) => void;
+  onCastKickVote: (approve: boolean) => void;
 }
 
 export const BoardGrid: React.FC<BoardGridProps> = (props) => {
@@ -381,6 +383,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
       >
         {/* Круглая кнопка выхода справа сверху у угла Тюрьмы (1:1 референс) */}
         <button
+          data-testid="board-leave-btn"
           onClick={onLeaveRoom}
           title="Покинуть комнату"
           className="absolute -top-[18px] -right-[18px] sm:-top-[24px] sm:-right-[24px] w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#26272d] hover:bg-rose-600 text-neutral-300 hover:text-white text-[10px] sm:text-xs font-bold flex items-center justify-center shadow-md transition cursor-pointer z-40"
@@ -410,17 +413,36 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             const isPortalCandidate = portalHighlightSet.has(def.id);
             const isSelected = selectedCellId === def.id;
 
-            // Статус поля в режиме конструктора Договора
+            // Статус поля в режиме конструктора Договора или активного обмена (без замыливания доски!)
+            const activeTr = !tradeDraft.open ? roomState.activeTrade : null;
             const isTradableInDraft =
               tradeDraft.open &&
               rt &&
               rt.branches === 0 &&
               (rt.ownerId === myPlayerId ||
                 (rt.ownerId !== null && rt.ownerId === tradeDraft.partnerId));
-            const isPickedInDraft =
-              tradeDraft.open &&
-              (tradeDraft.offerProps.includes(def.id) ||
-                tradeDraft.reqProps.includes(def.id));
+            const isTradeGive = tradeDraft.open
+              ? tradeDraft.offerProps.includes(def.id)
+              : activeTr
+              ? activeTr.toPlayerId === myPlayerId
+                ? activeTr.request.propertyIds.includes(def.id)
+                : activeTr.offer.propertyIds.includes(def.id)
+              : false;
+            const isTradeReceive = tradeDraft.open
+              ? tradeDraft.reqProps.includes(def.id)
+              : activeTr
+              ? activeTr.toPlayerId === myPlayerId
+                ? activeTr.offer.propertyIds.includes(def.id)
+                : activeTr.request.propertyIds.includes(def.id)
+              : false;
+            const tradeGiveLabel =
+              activeTr && activeTr.toPlayerId !== myPlayerId && activeTr.fromPlayerId !== myPlayerId
+                ? '📤 ОТДАЁТ'
+                : '📤 ОТДАЮ';
+            const tradeReceiveLabel =
+              activeTr && activeTr.toPlayerId !== myPlayerId && activeTr.fromPlayerId !== myPlayerId
+                ? '📥 ПОЛУЧАЕТ'
+                : '📥 ПОЛУЧУ';
 
             // Внешняя цветная плашка: цена если поле свободно, стоимость наступления (рента) если куплено
             let outerTabText = '';
@@ -521,6 +543,8 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 className={`relative min-w-0 min-h-0 select-none cursor-pointer transition-all duration-200 overflow-visible ${cornerRadiusClass} ${
                   tradeDraft.open && !isTradableInDraft
                     ? 'opacity-30 brightness-75'
+                    : activeTr && !isTradeGive && !isTradeReceive
+                    ? 'opacity-45 brightness-75'
                     : isDimmedForTarget
                     ? 'opacity-45 brightness-75'
                     : ''
@@ -531,8 +555,10 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     ? portalHighlightSet.size <= 8
                       ? 'ring-[4px] ring-cyan-400 shadow-[0_0_26px_rgba(34,211,238,0.95),inset_0_0_18px_rgba(6,182,212,0.5)] scale-[1.04] z-30'
                       : 'ring-2 ring-cyan-400/90 shadow-[inset_0_0_12px_rgba(6,182,212,0.4)] hover:scale-[1.06] hover:z-30 z-10'
-                    : isPickedInDraft
-                    ? 'ring-[4px] ring-lime-400 shadow-[0_0_20px_rgba(163,230,53,0.9)] z-20 scale-[1.04]'
+                    : isTradeGive
+                    ? 'ring-[4px] ring-rose-400 shadow-[0_0_24px_rgba(244,63,94,0.95)] z-30 scale-[1.05]'
+                    : isTradeReceive
+                    ? 'ring-[4px] ring-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.95)] z-30 scale-[1.05]'
                     : isSelected
                     ? 'ring-[3.5px] ring-amber-400 shadow-[0_14px_28px_rgba(0,0,0,0.65),0_0_22px_rgba(251,191,36,0.85)] z-30 scale-[1.07] -translate-y-1'
                     : isCurrentPlayerCell
@@ -635,11 +661,24 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                   </div>
                 )}
 
-                {/* Чекмарк выбранного поля в режиме Договора */}
-                {isPickedInDraft && (
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-20">
-                    <span className="w-6 h-6 rounded-full bg-lime-500 text-white text-xs font-black flex items-center justify-center shadow-lg border-2 border-white">
-                      ✓
+                {/* Чёткая подсветка что на что меняется в Договоре прямо поверх доски */}
+                {isTradeGive && (
+                  <div
+                    data-testid="trade-cell-give"
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center z-20"
+                  >
+                    <span className="px-1.5 py-0.5 rounded-md bg-rose-600/95 text-white text-[8px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
+                      {tradeGiveLabel}
+                    </span>
+                  </div>
+                )}
+                {isTradeReceive && (
+                  <div
+                    data-testid="trade-cell-receive"
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center z-20"
+                  >
+                    <span className="px-1.5 py-0.5 rounded-md bg-emerald-600/95 text-white text-[8px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
+                      {tradeReceiveLabel}
                     </span>
                   </div>
                 )}

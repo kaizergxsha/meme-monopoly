@@ -2,18 +2,22 @@ import React, { useState } from 'react';
 import { DICE_SKINS, MEME_AVATARS, MODE_INFO, TOKEN_COLORS } from '../../shared/memeContent.ts';
 import { formatMoney } from '../../shared/rules.ts';
 import {
+  AuthAccount,
   GameMode,
   PublicRoomSummary,
   RoomSettings,
   RoomState,
 } from '../../shared/types.ts';
 import { LocalProfile } from '../hooks/useGameSocket.ts';
-import { PLAYER_STAT_ROWS } from './PlayersSidebar.tsx';
+import { isImageAvatar, PlayerAvatar } from './PlayerAvatar.tsx';
 
 interface LobbyViewProps {
   connected: boolean;
   profile: LocalProfile;
+  authAccount: AuthAccount | null;
   onUpdateProfile: (patch: Partial<LocalProfile>) => void;
+  onOpenProfile: (playerId?: string) => void;
+  onOpenAvatarCreator: () => void;
   publicRooms: PublicRoomSummary[];
   roomState: RoomState | null;
   censored: boolean;
@@ -47,7 +51,10 @@ const AmbientBackdrop: React.FC = () => (
 export const LobbyView: React.FC<LobbyViewProps> = ({
   connected,
   profile,
+  authAccount,
   onUpdateProfile,
+  onOpenProfile,
+  onOpenAvatarCreator,
   publicRooms,
   roomState,
   onCreateRoom,
@@ -65,7 +72,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const [openModeInfo, setOpenModeInfo] = useState<GameMode | null>(null);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [customCashInput, setCustomCashInput] = useState('');
-  const [openStatsPlayerId, setOpenStatsPlayerId] = useState<string | null>(null);
 
   const copyInviteLink = () => {
     if (!roomState) return;
@@ -189,6 +195,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={() => onOpenProfile(profile.playerId)}
+              className="px-3 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] border border-white/15 text-white text-xs font-bold flex items-center gap-2 transition cursor-pointer"
+            >
+              <span className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-black/30 shrink-0">
+                <PlayerAvatar avatar={profile.avatar} fill />
+              </span>
+              <span className="hidden sm:inline">Профиль</span>
+            </button>
+            <button
               onClick={copyInviteLink}
               className="px-4 py-2 rounded-xl bg-indigo-500/80 hover:bg-indigo-500 border border-indigo-300/30 text-white text-xs font-bold shadow-lg shadow-indigo-600/25 backdrop-blur-md transition cursor-pointer"
             >
@@ -219,24 +235,25 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               <div className="space-y-2">
                 {roomState.players.map((p, idx) => {
                   const isMe = p.id === profile.playerId;
-                  const isStatsOpen = openStatsPlayerId === p.id;
                   return (
                     <div
                       key={p.id}
-                      onClick={() => setOpenStatsPlayerId((cur) => (cur === p.id ? null : p.id))}
-                      className={`${GLASS_SUBCARD} px-3 py-2.5 cursor-pointer hover:bg-white/[0.07] transition`}
+                      className={`${GLASS_SUBCARD} px-3 py-2.5 transition`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <span
-                            className="w-9 h-9 rounded-xl flex items-center justify-center text-xl shadow-inner shrink-0"
+                          <button
+                            type="button"
+                            onClick={() => onOpenProfile(p.id)}
+                            title={`Открыть профиль ${p.name}`}
+                            className="w-9 h-9 rounded-xl flex items-center justify-center text-xl shadow-inner shrink-0 overflow-hidden cursor-pointer hover:scale-105 transition"
                             style={{
                               backgroundColor: `${p.color}28`,
                               border: `2px solid ${p.color}`,
                             }}
                           >
-                            {p.avatar}
-                          </span>
+                            <PlayerAvatar avatar={p.avatar} fill />
+                          </button>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-sm truncate">{p.name}</span>
@@ -294,24 +311,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                           )}
                         </div>
                       </div>
-
-                      {isStatsOpen && (
-                        <div className="mt-2.5 pt-2 border-t border-white/10 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                          {PLAYER_STAT_ROWS.map((row) => (
-                            <div
-                              key={row.key}
-                              className="px-2 py-1 rounded-lg bg-black/25 border border-white/[0.06] flex items-center justify-between gap-1 text-[10px]"
-                            >
-                              <span className="text-slate-300 truncate">
-                                {row.icon} {row.label}
-                              </span>
-                              <span className="font-extrabold text-amber-300 tabular-nums shrink-0">
-                                {p.stats?.[row.key] ?? 0}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -372,7 +371,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   );
                 })}
               </div>
-              <div className="flex flex-wrap gap-1.5 mt-2">
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                {isImageAvatar(profile.avatar) && (
+                  <div
+                    title="Твоя кастомная аватарка"
+                    className="w-8 h-8 rounded-lg overflow-hidden ring-2 ring-amber-300 scale-105 shrink-0"
+                  >
+                    <PlayerAvatar avatar={profile.avatar} fill />
+                  </div>
+                )}
                 {MEME_AVATARS.map((av) => (
                   <button
                     key={av.id}
@@ -387,6 +394,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     {av.emoji}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={onOpenAvatarCreator}
+                  className="px-2.5 h-8 rounded-lg bg-indigo-500/25 hover:bg-indigo-500/40 border border-indigo-400/40 text-indigo-100 text-[11px] font-bold cursor-pointer transition"
+                >
+                  🎨 Своя
+                </button>
               </div>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                 {DICE_SKINS.map((sk) => (
@@ -615,6 +629,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   }
 
   // ================== ГЛАВНЫЙ ЭКРАН ВХОДА И СПИСКА КОМНАТ ==================
+  const lastRoomCode =
+    typeof window !== 'undefined' ? localStorage.getItem('mm_last_room') : null;
+  const normalizedMyName = profile.name.trim().toLowerCase();
+  const isMyOngoingRoom = (r: PublicRoomSummary) =>
+    r.status === 'PLAYING' &&
+    Boolean(
+      r.playerIds?.includes(profile.playerId) ||
+        (normalizedMyName &&
+          r.playerNames?.some((n) => n.trim().toLowerCase() === normalizedMyName)) ||
+        lastRoomCode === r.code
+    );
+  const myActiveRoom =
+    publicRooms.find((r) => isMyOngoingRoom(r)) ||
+    publicRooms.find((r) => r.status === 'PLAYING' && r.hasDisconnectedHumans) ||
+    null;
+
   return (
     <div
       onClick={() => setOpenModeInfo(null)}
@@ -637,7 +667,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            data-testid="open-profile-btn"
+            onClick={() => onOpenProfile(profile.playerId)}
+            className="px-3.5 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.16] border border-white/20 text-xs font-extrabold text-white flex items-center gap-2 backdrop-blur-md shadow-md cursor-pointer transition"
+          >
+            <span className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center bg-black/30 border border-white/20 shrink-0 text-sm">
+              <PlayerAvatar avatar={profile.avatar} fill />
+            </span>
+            <span className="max-w-[120px] truncate">{profile.name}</span>
+            <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-200 font-bold">
+              {authAccount ? '📊 Профиль' : '🔑 Вход / Профиль'}
+            </span>
+          </button>
+
           <span
             className={`px-3 py-1.5 rounded-full text-[11px] font-bold backdrop-blur-md border ${
               connected
@@ -650,12 +695,49 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         </div>
       </div>
 
+      {myActiveRoom && (
+        <div
+          data-testid="reconnect-active-banner"
+          className="max-w-6xl w-full mx-auto mb-4 relative z-10 rounded-2xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-rose-500/20 border border-amber-400/60 px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xl backdrop-blur-md"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-2xl leading-none shrink-0">🔄</span>
+            <div className="min-w-0">
+              <div className="text-xs sm:text-sm font-black text-amber-200 truncate">
+                Идёт активная партия #{myActiveRoom.code} ({MODE_INFO[myActiveRoom.mode].title})
+              </div>
+              <div className="text-[11px] text-slate-200/80 truncate">
+                Игроков: {myActiveRoom.playerCount}/{myActiveRoom.maxPlayers} · Вы можете вернуться обратно за стол
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            data-testid="reconnect-banner-btn"
+            onClick={() => onJoinRoom(myActiveRoom.code, joinPassword)}
+            className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs cursor-pointer transition shadow-md shrink-0"
+          >
+            🔄 Вернуться в игру
+          </button>
+        </div>
+      )}
+
       <div className="max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-5 relative z-10">
         {/* Профиль игрока */}
         <div className={`lg:col-span-4 ${GLASS_CARD} p-5 space-y-4`}>
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-amber-300">
-            1. Твой мем-профиль
-          </h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-amber-300">
+              1. Твой мем-профиль
+            </h2>
+            <button
+              type="button"
+              data-testid="lobby-profile-stats-btn"
+              onClick={() => onOpenProfile(profile.playerId)}
+              className="px-2.5 py-1 rounded-lg bg-white/[0.08] hover:bg-white/[0.15] border border-white/15 text-[11px] font-bold text-sky-200 cursor-pointer transition"
+            >
+              📊 Статистика
+            </button>
+          </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-300/80 mb-1">Никнейм</label>
@@ -670,7 +752,32 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300/80 mb-1.5">Мем-аватар</label>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label className="text-xs font-bold text-slate-300/80">Мем-аватар</label>
+              <button
+                type="button"
+                data-testid="lobby-avatar-creator-btn"
+                onClick={onOpenAvatarCreator}
+                className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-indigo-500/35 to-fuchsia-500/35 hover:from-indigo-500/55 hover:to-fuchsia-500/55 border border-indigo-300/40 text-[11px] font-extrabold text-indigo-100 cursor-pointer transition"
+              >
+                🎨 Своя аватарка
+              </button>
+            </div>
+            {isImageAvatar(profile.avatar) && (
+              <div className="mb-2 flex items-center gap-2.5 px-3 py-2 rounded-xl bg-amber-400/15 border border-amber-300/50">
+                <span className="w-9 h-9 rounded-full overflow-hidden border-2 border-amber-300 shrink-0">
+                  <PlayerAvatar avatar={profile.avatar} fill />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-extrabold text-amber-200">
+                    Выбрана твоя кастомная аватарка
+                  </div>
+                  <div className="text-[10px] text-slate-300/80">
+                    Можешь изменить её или переключить на эмодзи ниже
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-6 gap-1.5">
               {MEME_AVATARS.map((av) => (
                 <button
@@ -807,34 +914,57 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               </div>
             ) : (
               <div className="space-y-2">
-                {publicRooms.map((r) => (
-                  <div
-                    key={r.code}
-                    className={`flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 ${GLASS_SUBCARD}`}
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-black text-sm text-amber-300">#{r.code}</span>
-                        <span className="text-xs font-bold text-white">
-                          {MODE_INFO[r.mode].title}
-                        </span>
-                        <span className="text-[11px] text-slate-300/75">Хост: {r.hostName}</span>
+                {publicRooms.map((r) => {
+                  const isMine = isMyOngoingRoom(r);
+                  const canReconnect = r.status === 'PLAYING';
+                  return (
+                    <div
+                      key={r.code}
+                      className={`flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 ${GLASS_SUBCARD}`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-black text-sm text-amber-300">#{r.code}</span>
+                          <span className="text-xs font-bold text-white">
+                            {MODE_INFO[r.mode].title}
+                          </span>
+                          <span className="text-[11px] text-slate-300/75">Хост: {r.hostName}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-300/75">
+                          Игроков: {r.playerCount}/{r.maxPlayers} •{' '}
+                          {r.status === 'LOBBY'
+                            ? '🟢 Ожидание'
+                            : isMine
+                            ? '🔥 В игре (ваш матч)'
+                            : r.hasDisconnectedHumans
+                            ? '🟡 В игре (есть отключившийся игрок)'
+                            : '🔥 В игре'}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-300/75">
-                        Игроков: {r.playerCount}/{r.maxPlayers} •{' '}
-                        {r.status === 'LOBBY' ? '🟢 Ожидание' : '🔥 В игре'}
-                      </div>
+                      {r.status === 'LOBBY' ? (
+                        <button
+                          onClick={() => onJoinRoom(r.code, joinPassword)}
+                          className="px-3.5 py-1.5 rounded-xl bg-emerald-500/80 hover:bg-emerald-400 text-slate-950 text-xs font-extrabold cursor-pointer transition"
+                        >
+                          Подключиться
+                        </button>
+                      ) : canReconnect ? (
+                        <button
+                          type="button"
+                          data-testid="reconnect-room-btn"
+                          onClick={() => onJoinRoom(r.code, joinPassword)}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold cursor-pointer transition ${
+                            isMine || r.hasDisconnectedHumans
+                              ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md'
+                              : 'bg-white/10 hover:bg-white/20 text-slate-100 border border-white/15'
+                          }`}
+                        >
+                          🔄 Переподключиться
+                        </button>
+                      ) : null}
                     </div>
-                    {r.status === 'LOBBY' && (
-                      <button
-                        onClick={() => onJoinRoom(r.code, joinPassword)}
-                        className="px-3.5 py-1.5 rounded-xl bg-emerald-500/80 hover:bg-emerald-400 text-slate-950 text-xs font-extrabold cursor-pointer transition"
-                      >
-                        Подключиться
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

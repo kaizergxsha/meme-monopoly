@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getCellGridPosition } from '../../shared/boardData.ts';
 import { PlayerState } from '../../shared/types.ts';
+import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 interface BoardTokensLayerProps {
   players: PlayerState[];
@@ -358,8 +359,8 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               }`}
             >
               {/* Внутреннее контрастное кольцо M1 */}
-              <span className="w-[15px] h-[15px] sm:w-[18px] sm:h-[18px] md:w-[21px] md:h-[21px] rounded-full bg-black/25 border border-black/30 flex items-center justify-center text-[9px] sm:text-[11px] md:text-[13px] leading-none shadow-inner">
-                {p.avatar}
+              <span className="w-[15px] h-[15px] sm:w-[18px] sm:h-[18px] md:w-[21px] md:h-[21px] rounded-full bg-black/25 border border-black/30 flex items-center justify-center text-[9px] sm:text-[11px] md:text-[13px] leading-none shadow-inner overflow-hidden">
+                <PlayerAvatar avatar={p.avatar} fill />
               </span>
             </div>
 

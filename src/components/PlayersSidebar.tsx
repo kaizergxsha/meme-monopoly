@@ -4,19 +4,12 @@ import {
   calculateNetWorth,
   formatMoney,
   getTokenWalkDurationMs,
+  isSpeedRulesMode,
   txt,
 } from '../../shared/rules.ts';
-import { PlayerStats, RoomState, TauntEvent } from '../../shared/types.ts';
+import { RoomState, TauntEvent } from '../../shared/types.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
-
-export const PLAYER_STAT_ROWS: { key: keyof PlayerStats; icon: string; label: string }[] = [
-  { key: 'cellsBought', icon: '🏷️', label: 'Куплено клеток' },
-  { key: 'monopoliesCollected', icon: '🏢', label: 'Собрано монополий' },
-  { key: 'rouletteDeaths', icon: '💀', label: 'Смертей в рулетке' },
-  { key: 'casinoWins', icon: '🎰', label: 'Выигрышей в казино' },
-  { key: 'wins', icon: '🏆', label: 'Побед' },
-  { key: 'bankruptcies', icon: '📉', label: 'Банкротств' },
-];
+import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 interface PlayersSidebarProps {
   roomState: RoomState;
@@ -26,7 +19,9 @@ interface PlayersSidebarProps {
   nowMs: number;
   onToggleCensor: () => void;
   onOpenTradeWith: (targetPlayerId?: string) => void;
+  onStartKickVote: (targetPlayerId: string) => void;
   onOpenCredit: () => void;
+  onOpenProfile: (playerId: string) => void;
   onSendTaunt: (tauntId: string) => void;
   onSurrender: () => void;
   onLeaveRoom: () => void;
@@ -78,7 +73,9 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
   censored,
   nowMs,
   onOpenTradeWith,
+  onStartKickVote,
   onOpenCredit,
+  onOpenProfile,
   onSendTaunt,
   onSurrender,
 }) => {
@@ -98,6 +95,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
 
   const curPlayer = roomState.players[roomState.currentPlayerIndex];
   const isMyTurn = curPlayer?.id === myPlayerId;
+  const tradesLeft = Math.max(0, 3 - (roomState.tradesProposedThisTurn ?? 0));
   const me = roomState.players.find((p) => p.id === myPlayerId);
   const tauntCooldownLeft = me
     ? Math.max(0, Math.ceil((me.lastTauntAt + 5000 - nowMs) / 1000))
@@ -279,11 +277,11 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                         ? 'rgba(0,0,0,0.18)'
                         : `${p.color}22`,
                     }}
-                    className={`w-11 h-11 mx-auto rounded-full border-[2.5px] flex items-center justify-center text-xl shadow-md ${
+                    className={`w-11 h-11 mx-auto rounded-full border-[2.5px] flex items-center justify-center text-xl shadow-md overflow-hidden ${
                       p.isBankrupt ? 'grayscale opacity-60' : ''
                     }`}
                   >
-                    {p.avatar}
+                    <PlayerAvatar avatar={p.avatar} fill />
                   </div>
 
                   {/* Никнейм и явный индикатор активного хода */}
@@ -325,15 +323,41 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                       >
                         {formatM1Cash(p.cash)}
                       </div>
-                      {p.credit && (
-                        <div
-                          title={`Активный кредит: вернуть ${formatMoney(p.credit.paybackAmount)} до ${p.credit.dueRound} раунда`}
-                          className="mt-1 inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/25 border border-amber-300/60 text-amber-100 text-[10px] font-extrabold shadow-xs"
-                        >
-                          <span className="text-sm leading-none">🏦</span>
-                          <span>Кредит · {p.credit.dueRound}р</span>
-                        </div>
-                      )}
+                      {p.credit && (() => {
+                        const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
+                        const totalTerm =
+                          p.credit.takenAtRound !== undefined
+                            ? Math.max(1, p.credit.dueRound - p.credit.takenAtRound)
+                            : defaultTerm;
+                        const roundsLeft = Math.max(0, p.credit.dueRound - roomState.round);
+                        const elapsed = Math.max(0, Math.min(totalTerm, totalTerm - roundsLeft));
+                        const pct = Math.round((elapsed / totalTerm) * 100);
+                        const urgent = roundsLeft <= 2;
+                        return (
+                          <div
+                            data-testid="player-credit-countdown"
+                            title={`Кредит: вернуть ${formatMoney(p.credit.paybackAmount)} до ${p.credit.dueRound} раунда (осталось ${roundsLeft} р.)`}
+                            className={`mt-1 mx-auto max-w-[140px] px-2 py-0.5 rounded-lg border text-[9.5px] font-extrabold shadow-xs ${
+                              urgent
+                                ? 'bg-rose-500/30 border-rose-300/70 text-rose-100 animate-pulse'
+                                : 'bg-amber-500/25 border-amber-300/60 text-amber-100'
+                            }`}
+                          >
+                            <div className="flex items-center justify-center gap-1 leading-tight">
+                              <span>🏦</span>
+                              <span>{formatMoney(p.credit.paybackAmount)} · {roundsLeft}р</span>
+                            </div>
+                            <div className="mt-0.5 h-1 w-full rounded-full bg-black/35 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  urgent ? 'bg-rose-400' : 'bg-amber-300'
+                                }`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
 
@@ -364,39 +388,57 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                       <span>Активы: {formatMoney(netWorth)}</span>
                     </div>
 
-                    <div className="px-1 py-1 border-b border-white/5 space-y-0.5" data-testid="player-stats-panel">
-                      <div className="px-1 pb-0.5 text-[10px] font-bold text-amber-300/90">
-                        📊 Статистика за всё время
-                      </div>
-                      {PLAYER_STAT_ROWS.map((row) => (
-                        <div
-                          key={row.key}
-                          className="text-[11px] flex items-center justify-between gap-1 px-2 py-0.5 rounded bg-white/[0.03]"
-                        >
-                          <span className="text-neutral-300 truncate">
-                            {row.icon} {row.label}
-                          </span>
-                          <span className="font-extrabold text-white tabular-nums shrink-0">
-                            {p.stats?.[row.key] ?? 0}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    <button
+                      type="button"
+                      data-testid="card-profile-btn"
+                      onClick={() => {
+                        setMenuPlayerId(null);
+                        onOpenProfile(p.id);
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-sky-200 font-semibold transition cursor-pointer"
+                    >
+                      <span>📊 Профиль и статистика</span>
+                    </button>
 
                     {p.id !== myPlayerId && !p.isBankrupt && roomState.status === 'PLAYING' && (
-                      <button
-                        disabled={!isMyTurn}
-                        onClick={() => {
-                          setMenuPlayerId(null);
-                          onOpenTradeWith(p.id);
-                        }}
-                        className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-white/10 disabled:opacity-40 text-neutral-100 font-semibold transition cursor-pointer"
-                      >
-                        <span>📄 Договор</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10">
-                          {propCount}
-                        </span>
-                      </button>
+                      <>
+                        <button
+                          data-testid="card-trade-btn"
+                          disabled={!isMyTurn || tradesLeft <= 0}
+                          onClick={() => {
+                            setMenuPlayerId(null);
+                            onOpenTradeWith(p.id);
+                          }}
+                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-white/10 disabled:opacity-40 text-neutral-100 font-semibold transition cursor-pointer"
+                        >
+                          <span>📄 Договор ({tradesLeft}/3)</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10">
+                            {propCount}
+                          </span>
+                        </button>
+                        <button
+                          data-testid="card-kick-btn"
+                          disabled={
+                            Boolean(roomState.activeKickVote) ||
+                            roomState.players.filter((pl) => !pl.isBankrupt).length < 3
+                          }
+                          title={
+                            roomState.activeKickVote
+                              ? 'Уже идёт другое голосование за кик'
+                              : roomState.players.filter((pl) => !pl.isBankrupt).length < 3
+                              ? 'Голосование за кик доступно от 3 активных игроков'
+                              : `Запустить голосование за кик ${p.name}`
+                          }
+                          onClick={() => {
+                            setMenuPlayerId(null);
+                            onStartKickVote(p.id);
+                          }}
+                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-rose-500/20 disabled:opacity-40 text-rose-200 font-semibold transition cursor-pointer"
+                        >
+                          <span>👢 Кикнуть (голосование)</span>
+                          <span className="text-[10px] opacity-80">🗳️</span>
+                        </button>
+                      </>
                     )}
 
                     {p.id === myPlayerId && !p.isBankrupt && roomState.status === 'PLAYING' && (
@@ -447,39 +489,86 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
         </div>
 
         {/* Понятная панель быстрых действий: Крупная кнопка Кредита, Договор и мем-реакции */}
-        {me && !me.isBankrupt && roomState.status === 'PLAYING' && (
+        {me && !me.isBankrupt && roomState.status === 'PLAYING' && (() => {
+          const myCredit = me.credit;
+          const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
+          const totalTerm = myCredit
+            ? myCredit.takenAtRound !== undefined
+              ? Math.max(1, myCredit.dueRound - myCredit.takenAtRound)
+              : defaultTerm
+            : defaultTerm;
+          const roundsLeft = myCredit ? Math.max(0, myCredit.dueRound - roomState.round) : 0;
+          const elapsed = myCredit ? Math.max(0, Math.min(totalTerm, totalTerm - roundsLeft)) : 0;
+          const pct = Math.round((elapsed / totalTerm) * 100);
+          const urgent = Boolean(myCredit && roundsLeft <= 2);
+          const cooldownLeft =
+            !myCredit && me.creditCooldownUntilRound && roomState.round < me.creditCooldownUntilRound
+              ? me.creditCooldownUntilRound - roomState.round
+              : 0;
+          const secondaryTaunts = [
+            {
+              id: 'fiasco',
+              testId: 'taunt-voice-fiasco',
+              label: '🤦‍♂️ Это фиаско, братан',
+              cls: 'from-sky-500/18 to-indigo-500/18 hover:from-sky-500/30 hover:to-indigo-500/30 border-sky-400/40 text-sky-100',
+            },
+            {
+              id: 'govno',
+              testId: 'taunt-voice-govno',
+              label: censored ? '💩 Гениальная инвестиция' : '💩 Инвестировал в говно',
+              cls: 'from-yellow-600/20 to-amber-700/20 hover:from-yellow-600/35 hover:to-amber-700/35 border-yellow-500/40 text-yellow-100',
+            },
+            {
+              id: 'press_f',
+              testId: 'taunt-voice-press-f',
+              label: '🕯️ Помянем... Press F',
+              cls: 'from-purple-500/18 to-slate-600/25 hover:from-purple-500/30 hover:to-slate-600/40 border-purple-400/40 text-purple-100',
+            },
+          ];
+
+          return (
           <div className="shrink-0 min-w-0 bg-[#222328] border border-[#2e3038] rounded-xl p-2 space-y-1.5 shadow-lg">
             <button
+              type="button"
+              data-testid="sidebar-credit-report"
               onClick={onOpenCredit}
-              className={`w-full py-1.5 px-2.5 rounded-xl flex items-center justify-between transition cursor-pointer border ${
-                me.credit
-                  ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400/50 text-amber-200'
+              className={`w-full py-1.5 px-2.5 rounded-xl flex flex-col gap-1 transition cursor-pointer border ${
+                myCredit
+                  ? urgent
+                    ? 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-400/60 text-rose-100'
+                    : 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400/50 text-amber-200'
                   : 'bg-amber-400/15 hover:bg-amber-400/25 border-amber-400/35 text-amber-300'
               }`}
-              title="Взять или погасить кредит банка"
+              title="Открыть визуальный отчёт по кредиту банка"
             >
-              <span className="flex items-center gap-2 min-w-0">
-                <span className="text-xl leading-none shrink-0">🏦</span>
-                <span className="text-left leading-tight min-w-0">
-                  <span className="block text-xs font-black tracking-wide text-amber-200">
-                    КРЕДИТ
-                  </span>
-                  <span className="block text-[10px] font-semibold text-amber-300/80 truncate">
-                    {me.credit ? `Долг ${formatMoney(me.credit.paybackAmount)}` : 'Взять +$5 000'}
+              <div className="w-full flex items-center justify-between gap-1.5">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="text-xl leading-none shrink-0">🏦</span>
+                  <span className="text-left leading-tight min-w-0">
+                    <span className="block text-xs font-black tracking-wide">
+                      КРЕДИТ {myCredit ? (urgent ? '· СРОЧНО' : '· АКТИВЕН') : ''}
+                    </span>
+                    <span className="block text-[10px] font-semibold opacity-85 truncate">
+                      {myCredit
+                        ? `Долг ${formatMoney(myCredit.paybackAmount)} · ост. ${roundsLeft}р`
+                        : cooldownLeft > 0
+                        ? `Откат ещё ${cooldownLeft}р`
+                        : 'Отчёт · взять +$5 000'}
+                    </span>
                   </span>
                 </span>
-              </span>
-              <span className="text-[11px] font-black opacity-80 shrink-0">›</span>
-            </button>
-
-            <button
-              disabled={!isMyTurn}
-              onClick={() => onOpenTradeWith()}
-              className="w-full py-1.5 px-2.5 rounded-lg bg-white/5 hover:bg-white/12 disabled:opacity-35 flex items-center justify-center gap-1.5 text-xs font-bold text-lime-300 transition cursor-pointer border border-white/10"
-              title="Предложить обмен полями и деньгами другому игроку"
-            >
-              <span className="text-base leading-none">🤝</span>
-              <span>Сделка (обмен)</span>
+                <span className="text-[11px] font-black opacity-80 shrink-0">›</span>
+              </div>
+              {myCredit && (
+                <div className="w-full h-1.5 rounded-full bg-black/40 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      urgent ? 'bg-rose-400' : me.cash >= myCredit.paybackAmount ? 'bg-emerald-400' : 'bg-amber-300'
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              )}
             </button>
 
             {/* Голосовые фразы с озвучкой для всех игроков */}
@@ -523,24 +612,27 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                 <span className="shrink-0 text-xs leading-none">🔊</span>
               </button>
 
-              {/* Быстрые звуковые подколы */}
-              <div className="grid grid-cols-3 gap-1 pt-0.5">
-                {TAUNTS.filter((t) => t.id !== 'loh' && t.id !== 'rent_rage').map((t) => (
+              {secondaryTaunts.map((st) => {
+                const def = TAUNTS.find((t) => t.id === st.id);
+                return (
                   <button
-                    key={t.id}
+                    key={st.id}
                     type="button"
+                    data-testid={st.testId}
                     disabled={tauntCooldownLeft > 0}
-                    onClick={() => onSendTaunt(t.id)}
-                    title={txt(t.text, t.cleanText, censored)}
-                    className="py-1 rounded-md bg-black/30 hover:bg-white/10 border border-white/5 disabled:opacity-35 text-xs flex items-center justify-center transition cursor-pointer"
+                    onClick={() => onSendTaunt(st.id)}
+                    title={def ? `${txt(def.text, def.cleanText, censored)} (с озвучкой)` : st.label}
+                    className={`w-full min-w-0 py-1 px-2 rounded-lg bg-gradient-to-r ${st.cls} border disabled:opacity-35 text-[10px] font-bold leading-tight flex items-center justify-between gap-1 transition cursor-pointer`}
                   >
-                    {t.emoji}
+                    <span className="min-w-0 text-left truncate">{st.label}</span>
+                    <span className="shrink-0 text-[11px] leading-none">🔊</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
-        )}
+          );
+        })()}
       </aside>
     </>
   );
