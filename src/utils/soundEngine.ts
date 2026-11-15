@@ -5,6 +5,10 @@ const PRELOAD_SOUNDS = {
   tauntLohClean: '/sounds/taunt_loh_clean.wav',
   tauntRentRage: '/sounds/taunt_rent_rage.wav',
   tauntRentRageClean: '/sounds/taunt_rent_rage_clean.wav',
+  tauntFiasco: '/sounds/taunt_fiasco.wav',
+  tauntGovno: '/sounds/taunt_govno.wav',
+  tauntGovnoClean: '/sounds/taunt_govno_clean.wav',
+  tauntPressF: '/sounds/taunt_press_f.wav',
 } as const;
 
 function readInitialMuted(): boolean {
@@ -451,7 +455,13 @@ class SoundEngine {
     if (this.muted) return;
 
     if (sound === 'trombone') {
-      this.playSadTrombone();
+      const url = censored ? PRELOAD_SOUNDS.tauntGovnoClean : PRELOAD_SOUNDS.tauntGovno;
+      const phrase = censored ? 'Гениальная инвестиция!' : 'Инвестировал в говно!';
+      this.playClip(url, 0.95, () => {
+        this.speakFallback(phrase, 1.7, 1.2, () => {
+          this.playSadTrombone();
+        });
+      });
       return;
     }
 
@@ -474,13 +484,21 @@ class SoundEngine {
         });
       });
     } else if (sound === 'fiasco') {
-      this.playTone(440, 0.15, 'triangle', 0, 0.12);
-      this.playTone(311, 0.4, 'sawtooth', 0.16, 0.13, 240);
+      this.playClip(PRELOAD_SOUNDS.tauntFiasco, 0.95, () => {
+        this.speakFallback('Это фиаско, братан!', 1.7, 1.2, () => {
+          this.playTone(440, 0.15, 'triangle', 0, 0.12);
+          this.playTone(311, 0.4, 'sawtooth', 0.16, 0.13, 240);
+        });
+      });
     } else {
-      // Press F торжественный аккорд
-      this.playTone(261.6, 0.6, 'sine', 0, 0.12);
-      this.playTone(329.6, 0.6, 'sine', 0.05, 0.1);
-      this.playTone(392.0, 0.7, 'sine', 0.1, 0.1);
+      // Press F голосовая озвучка + торжественный аккорд fallback
+      this.playClip(PRELOAD_SOUNDS.tauntPressF, 0.95, () => {
+        this.speakFallback('Помянем... Пресс эф!', 1.5, 1.15, () => {
+          this.playTone(261.6, 0.6, 'sine', 0, 0.12);
+          this.playTone(329.6, 0.6, 'sine', 0.05, 0.1);
+          this.playTone(392.0, 0.7, 'sine', 0.1, 0.1);
+        });
+      });
     }
   }
 
