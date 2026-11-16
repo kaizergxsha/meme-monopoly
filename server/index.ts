@@ -12,6 +12,7 @@ import {
   getPlayerStats,
   getRecentMatches,
   getSessionAccount,
+  initDb,
   loginUser,
   logoutSession,
   registerUser,
@@ -598,6 +599,8 @@ if (fs.existsSync(distPath)) {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
+
+await initDb();
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🎲 Мемная Монополия запущена: http://localhost:${PORT}`);

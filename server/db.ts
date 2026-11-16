@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { Pool } from 'pg';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -70,71 +71,227 @@ const fallbackSessions = new Map<string, FallbackSessionRecord>();
 const fallbackMatches: RecentMatchSummary[] = [];
 
 let db: DatabaseSync | null = null;
+let pgPool: Pool | null = null;
+let pgWriteChain: Promise<void> = Promise.resolve();
+let dbInitialized = false;
 
-try {
-  fs.mkdirSync(dataDir, { recursive: true });
-  db = new DatabaseSync(path.join(dataDir, 'meme_monopoly.sqlite'));
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS profiles (
-      player_id TEXT PRIMARY KEY,
-      nickname TEXT NOT NULL,
-      avatar TEXT NOT NULL,
-      color TEXT DEFAULT '#dc2626',
-      dice_skin TEXT DEFAULT 'classic',
-      games_played INTEGER DEFAULT 0,
-      wins INTEGER DEFAULT 0,
-      cells_bought INTEGER DEFAULT 0,
-      monopolies_collected INTEGER DEFAULT 0,
-      roulette_deaths INTEGER DEFAULT 0,
-      casino_wins INTEGER DEFAULT 0,
-      bankruptcies INTEGER DEFAULT 0,
-      created_at INTEGER DEFAULT 0,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS match_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      room_code TEXT NOT NULL,
-      mode TEXT NOT NULL,
-      winner_names TEXT NOT NULL,
-      rounds INTEGER NOT NULL,
-      duration_sec INTEGER NOT NULL,
-      finished_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      player_id TEXT NOT NULL UNIQUE,
-      created_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      token TEXT PRIMARY KEY,
-      player_id TEXT NOT NULL,
-      email TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-  `);
+function pgExec(sql: string, params: unknown[] = []): void {
+  if (!pgPool) return;
+  const pool = pgPool;
+  pgWriteChain = pgWriteChain
+    .then(() => pool.query(sql, params).then(() => undefined))
+    .catch((err) => {
+      console.error('[DB] PostgreSQL write error:', err);
+    });
+}
 
-  for (const colDef of [
-    'cells_bought INTEGER DEFAULT 0',
-    'monopolies_collected INTEGER DEFAULT 0',
-    'roulette_deaths INTEGER DEFAULT 0',
-    'casino_wins INTEGER DEFAULT 0',
-    'bankruptcies INTEGER DEFAULT 0',
-    "color TEXT DEFAULT '#dc2626'",
-    "dice_skin TEXT DEFAULT 'classic'",
-    'created_at INTEGER DEFAULT 0',
-  ]) {
+function initSqlite(): void {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    db = new DatabaseSync(path.join(dataDir, 'meme_monopoly.sqlite'));
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS profiles (
+        player_id TEXT PRIMARY KEY,
+        nickname TEXT NOT NULL,
+        avatar TEXT NOT NULL,
+        color TEXT DEFAULT '#dc2626',
+        dice_skin TEXT DEFAULT 'classic',
+        games_played INTEGER DEFAULT 0,
+        wins INTEGER DEFAULT 0,
+        cells_bought INTEGER DEFAULT 0,
+        monopolies_collected INTEGER DEFAULT 0,
+        roulette_deaths INTEGER DEFAULT 0,
+        casino_wins INTEGER DEFAULT 0,
+        bankruptcies INTEGER DEFAULT 0,
+        created_at INTEGER DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS match_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_code TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        winner_names TEXT NOT NULL,
+        rounds INTEGER NOT NULL,
+        duration_sec INTEGER NOT NULL,
+        finished_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        player_id TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        player_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
+    `);
+
+    for (const colDef of [
+      'cells_bought INTEGER DEFAULT 0',
+      'monopolies_collected INTEGER DEFAULT 0',
+      'roulette_deaths INTEGER DEFAULT 0',
+      'casino_wins INTEGER DEFAULT 0',
+      'bankruptcies INTEGER DEFAULT 0',
+      "color TEXT DEFAULT '#dc2626'",
+      "dice_skin TEXT DEFAULT 'classic'",
+      'created_at INTEGER DEFAULT 0',
+    ]) {
+      try {
+        db.exec(`ALTER TABLE profiles ADD COLUMN ${colDef}`);
+      } catch {
+        // column already exists
+      }
+    }
+    console.log('[DB] Using local SQLite:', path.join(dataDir, 'meme_monopoly.sqlite'));
+  } catch (err) {
+    console.warn('[DB] SQLite fallback to memory mode:', err);
+    db = null;
+  }
+}
+
+export async function initDb(): Promise<void> {
+  if (dbInitialized) return;
+  dbInitialized = true;
+
+  const databaseUrl = (process.env.DATABASE_URL || '').trim();
+  if (databaseUrl) {
     try {
-      db.exec(`ALTER TABLE profiles ADD COLUMN ${colDef}`);
-    } catch {
-      // column already exists
+      const isLocal = databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1');
+      const useSsl = process.env.DATABASE_SSL === 'false' ? false : !isLocal;
+      const pool = new Pool({
+        connectionString: databaseUrl,
+        ssl: useSsl ? { rejectUnauthorized: false } : false,
+        max: 5,
+      });
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS profiles (
+          player_id TEXT PRIMARY KEY,
+          nickname TEXT NOT NULL,
+          avatar TEXT NOT NULL,
+          color TEXT DEFAULT '#dc2626',
+          dice_skin TEXT DEFAULT 'classic',
+          games_played INTEGER DEFAULT 0,
+          wins INTEGER DEFAULT 0,
+          cells_bought INTEGER DEFAULT 0,
+          monopolies_collected INTEGER DEFAULT 0,
+          roulette_deaths INTEGER DEFAULT 0,
+          casino_wins INTEGER DEFAULT 0,
+          bankruptcies INTEGER DEFAULT 0,
+          created_at BIGINT DEFAULT 0,
+          updated_at BIGINT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS match_history (
+          id SERIAL PRIMARY KEY,
+          room_code TEXT NOT NULL,
+          mode TEXT NOT NULL,
+          winner_names TEXT NOT NULL,
+          rounds INTEGER NOT NULL,
+          duration_sec INTEGER NOT NULL,
+          finished_at BIGINT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          email TEXT NOT NULL UNIQUE,
+          password_hash TEXT NOT NULL,
+          player_id TEXT NOT NULL UNIQUE,
+          created_at BIGINT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS sessions (
+          token TEXT PRIMARY KEY,
+          player_id TEXT NOT NULL,
+          email TEXT NOT NULL,
+          created_at BIGINT NOT NULL,
+          expires_at BIGINT NOT NULL
+        );
+      `);
+
+      const profilesRes = await pool.query('SELECT * FROM profiles');
+      for (const row of profilesRes.rows) {
+        const stats: PlayerStats = {
+          cellsBought: Number(row.cells_bought) || 0,
+          monopoliesCollected: Number(row.monopolies_collected) || 0,
+          rouletteDeaths: Number(row.roulette_deaths) || 0,
+          casinoWins: Number(row.casino_wins) || 0,
+          wins: Number(row.wins) || 0,
+          bankruptcies: Number(row.bankruptcies) || 0,
+        };
+        fallbackStats.set(String(row.player_id), stats);
+        fallbackProfiles.set(String(row.player_id), {
+          playerId: String(row.player_id),
+          nickname: String(row.nickname || 'Гость'),
+          avatar: String(row.avatar || '🐸'),
+          color: String(row.color || '#dc2626'),
+          diceSkin: (String(row.dice_skin || 'classic') as DiceSkin),
+          gamesPlayed: Number(row.games_played) || 0,
+          createdAt: Number(row.created_at) || Number(row.updated_at) || Date.now(),
+          updatedAt: Number(row.updated_at) || Date.now(),
+          stats,
+        });
+      }
+
+      const usersRes = await pool.query('SELECT email, password_hash, player_id, created_at FROM users');
+      for (const row of usersRes.rows) {
+        fallbackUsers.set(String(row.email), {
+          email: String(row.email),
+          passwordHash: String(row.password_hash),
+          playerId: String(row.player_id),
+          createdAt: Number(row.created_at) || Date.now(),
+        });
+      }
+
+      const now = Date.now();
+      await pool.query('DELETE FROM sessions WHERE expires_at <= $1', [now]);
+      const sessionsRes = await pool.query(
+        'SELECT token, player_id, email, created_at, expires_at FROM sessions WHERE expires_at > $1',
+        [now]
+      );
+      for (const row of sessionsRes.rows) {
+        fallbackSessions.set(String(row.token), {
+          token: String(row.token),
+          playerId: String(row.player_id),
+          email: String(row.email),
+          createdAt: Number(row.created_at) || now,
+          expiresAt: Number(row.expires_at),
+        });
+      }
+
+      const matchesRes = await pool.query(
+        `SELECT id, room_code, mode, winner_names, rounds, duration_sec, finished_at
+         FROM match_history
+         ORDER BY id DESC
+         LIMIT 50`
+      );
+      for (const row of matchesRes.rows) {
+        fallbackMatches.push({
+          id: Number(row.id),
+          roomCode: String(row.room_code),
+          mode: String(row.mode),
+          winnerNames: String(row.winner_names),
+          rounds: Number(row.rounds) || 0,
+          durationSec: Number(row.duration_sec) || 0,
+          finishedAt: Number(row.finished_at) || now,
+        });
+      }
+
+      pgPool = pool;
+      db = null;
+      console.log(
+        `[DB] Connected to PostgreSQL (profiles: ${fallbackProfiles.size}, users: ${fallbackUsers.size}, matches: ${fallbackMatches.length})`
+      );
+      return;
+    } catch (err) {
+      console.error('[DB] PostgreSQL connection failed, falling back to SQLite:', err);
+      pgPool = null;
     }
   }
-} catch (err) {
-  console.warn('[DB] SQLite fallback to memory mode:', err);
-  db = null;
+
+  initSqlite();
 }
 
 function normalizeEmail(raw: string): string {
@@ -222,17 +379,31 @@ export function upsertPlayerProfile(
 
   if (!db) {
     const cur = fallbackProfiles.get(playerId);
+    const finalColor = color || cur?.color || '#dc2626';
+    const finalDiceSkin = diceSkin || cur?.diceSkin || 'classic';
+    const finalCreatedAt = cur?.createdAt && cur.createdAt > 0 ? cur.createdAt : now;
     fallbackProfiles.set(playerId, {
       playerId,
       nickname: cleanNick,
       avatar: cleanAvatar,
-      color: color || cur?.color || '#dc2626',
-      diceSkin: diceSkin || cur?.diceSkin || 'classic',
+      color: finalColor,
+      diceSkin: finalDiceSkin,
       gamesPlayed: cur?.gamesPlayed || 0,
-      createdAt: cur?.createdAt || now,
+      createdAt: finalCreatedAt,
       updatedAt: now,
       stats: cur?.stats ?? { ...(fallbackStats.get(playerId) ?? EMPTY_PLAYER_STATS) },
     });
+    pgExec(
+      `INSERT INTO profiles (player_id, nickname, avatar, color, dice_skin, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (player_id) DO UPDATE SET
+         nickname = EXCLUDED.nickname,
+         avatar = EXCLUDED.avatar,
+         color = EXCLUDED.color,
+         dice_skin = EXCLUDED.dice_skin,
+         updated_at = EXCLUDED.updated_at`,
+      [playerId, cleanNick, cleanAvatar, finalColor, finalDiceSkin, finalCreatedAt, now]
+    );
     return;
   }
 
@@ -379,6 +550,13 @@ export function incrementPlayerStat(
     upsertPlayerProfile(player.id, player.name, player.avatar, player.color, player.diceSkin);
     const prof = fallbackProfiles.get(player.id);
     if (prof) prof.stats = { ...nextFallback };
+    const col = STAT_COLUMN_MAP[stat];
+    pgExec(
+      `UPDATE profiles
+       SET ${col} = COALESCE(${col}, 0) + $1, updated_at = $2
+       WHERE player_id = $3`,
+      [delta, Date.now(), player.id]
+    );
     return { ...nextFallback };
   }
 
@@ -426,7 +604,7 @@ export function recordMatchFinish(params: {
 
   if (!db) {
     fallbackMatches.unshift({
-      id: fallbackMatches.length + 1,
+      id: (fallbackMatches[0]?.id ?? 0) + 1,
       roomCode: params.roomCode,
       mode: params.mode,
       winnerNames: winners || 'Никто',
@@ -435,6 +613,24 @@ export function recordMatchFinish(params: {
       finishedAt: now,
     });
     if (fallbackMatches.length > 50) fallbackMatches.length = 50;
+    pgExec(
+      `INSERT INTO match_history (room_code, mode, winner_names, rounds, duration_sec, finished_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [params.roomCode, params.mode, winners || 'Никто', params.rounds, params.durationSec, now]
+    );
+    for (const p of params.players) {
+      pgExec(
+        `INSERT INTO profiles (player_id, nickname, avatar, games_played, wins, created_at, updated_at)
+         VALUES ($1, $2, $3, 1, $4, $5, $6)
+         ON CONFLICT (player_id) DO UPDATE SET
+           nickname = EXCLUDED.nickname,
+           avatar = EXCLUDED.avatar,
+           games_played = COALESCE(profiles.games_played, 0) + 1,
+           wins = COALESCE(profiles.wins, 0) + EXCLUDED.wins,
+           updated_at = EXCLUDED.updated_at`,
+        [p.id, sanitizeNickname(p.name), sanitizeAvatar(p.avatar), p.won ? 1 : 0, now, now]
+      );
+    }
     return;
   }
 
@@ -523,6 +719,11 @@ function createSessionRecord(playerId: string, email: string): string {
 
   if (!db) {
     fallbackSessions.set(token, { token, playerId, email, createdAt: now, expiresAt });
+    pgExec(
+      `INSERT INTO sessions (token, player_id, email, created_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [token, playerId, email, now, expiresAt]
+    );
     return token;
   }
 
@@ -569,6 +770,12 @@ export function registerUser(params: {
     const playerId = guestBusy ? `u_${crypto.randomBytes(6).toString('hex')}` : guestId;
 
     fallbackUsers.set(email, { email, passwordHash, playerId, createdAt: now });
+    pgExec(
+      `INSERT INTO users (email, password_hash, player_id, created_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (email) DO NOTHING`,
+      [email, passwordHash, playerId, now]
+    );
     upsertPlayerProfile(playerId, cleanNick, cleanAvatar, params.color, params.diceSkin);
     const token = createSessionRecord(playerId, email);
     return {
@@ -687,6 +894,7 @@ export function getSessionAccount(token: string): AuthAccount | null {
     if (!sess) return null;
     if (sess.expiresAt <= now) {
       fallbackSessions.delete(cleanToken);
+      pgExec('DELETE FROM sessions WHERE token = $1', [cleanToken]);
       return null;
     }
     return {
@@ -720,6 +928,7 @@ export function logoutSession(token: string): void {
   if (!cleanToken) return;
   if (!db) {
     fallbackSessions.delete(cleanToken);
+    pgExec('DELETE FROM sessions WHERE token = $1', [cleanToken]);
     return;
   }
   try {

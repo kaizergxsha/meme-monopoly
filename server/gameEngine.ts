@@ -57,79 +57,38 @@ import {
   upsertPlayerProfile,
 } from './db.ts';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-function loadCustomCards(): ChanceCardDef[] {
-  try {
-    const p = path.join(__dirname, 'data', 'customCards.json');
-    if (fs.existsSync(p)) {
-      const raw = JSON.parse(fs.readFileSync(p, 'utf-8'));
-      if (Array.isArray(raw)) return raw;
-    }
-  } catch {
-    // ignore invalid custom json
-  }
-  return [];
-}
-
-const FULL_CHANCE_POOL: ChanceCardDef[] = [...CHANCE_DECK, ...loadCustomCards()];
-
-export interface ServerRoom {
-  state: RoomState;
-  deck: ChanceCardDef[];
-  bankruptcyStyleCounter: number;
-  lastActivityAt: number;
-  creditedMonopolies: Set<string>;
-  pendingChance: { card: ChanceCardDef; playerId: string } | null;
-  postDebtLandingCellId: number | null;
-  activeTradeMortgagedIds: Set<number> | null;
-  tradeDraftExtensionsThisTurn: number;
-}
-
-export interface RoomCallbacks {
-  onStateChange: (roomCode: string, state: RoomState) => void;
-  onTaunt: (roomCode: string, event: TauntEvent) => void;
-  onBankruptcyAnim: (roomCode: string, event: BankruptcyAnimationEvent) => void;
-}
-
-function randomId(len = 6): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out = '';
-  for (let i = 0; i < len; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
-}
-
-function pickRandom<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-function randDie(): number {
-  return Math.floor(Math.random() * 6) + 1;
-}
-
-function randSpeedDie(): SpeedDieFace {
-  const faces: SpeedDieFace[] = [1, 2, 3, 'BUS', 'BUS', 'M1'];
-  return faces[Math.floor(Math.random() * faces.length)];
-}
-
-function logAvatarBadge(avatar?: string): string {
-  const a = (avatar || '').trim();
-  if (!a || a.startsWith('data:') || a.startsWith('http') || a.length > 12) {
-    return '😎';
-  }
-  return a;
-}
+import {
+  buyProperty as buyPropertyHandler,
+  declineProperty as declinePropertyHandler,
+  finalizeAuction as finalizeAuctionHandler,
+  passAuction as passAuctionHandler,
+  placeAuctionBid as placeAuctionBidHandler,
+  startMortgagedAuction as startMortgagedAuctionHandler,
+} from './engine/auctionHandlers.ts';
+import {
+  EngineHost,
+  FULL_CHANCE_POOL,
+  logAvatarBadge,
+  pickRandom,
+  randDie,
+  randomId,
+  randSpeedDie,
+  RoomCallbacks,
+  ServerRoom,
+  shuffle,
+} from './engine/engineUtils.ts';
+import {
+  castKickVote as castKickVoteHandler,
+  evaluateKickVoteProgress as evaluateKickVoteProgressHandler,
+  resolveKickVote as resolveKickVoteHandler,
+  startKickVote as startKickVoteHandler,
+} from './engine/kickVoteHandlers.ts';
+import {
+  extendTurnForTradeDraft as extendTurnForTradeDraftHandler,
+  proposeTrade as proposeTradeHandler,
+  respondTrade as respondTradeHandler,
+} from './engine/tradeHandlers.ts';
+export type { RoomCallbacks, ServerRoom };
 
 export class GameManager {
   public rooms = new Map<string, ServerRoom>();
@@ -2362,318 +2321,28 @@ export class GameManager {
 
   // ================== ПОКУПКА ПОЛЕЙ И АУКЦИОНЫ ==================
 
-  public buyProperty(room: ServerRoom, playerId: string) {
-    if (room.state.phase !== 'BUY_DECISION') return;
-    const player = room.state.players[room.state.currentPlayerIndex];
-    if (!player || player.id !== playerId) return;
-
-    const cellId = player.position;
-    const def = BOARD_CELLS[cellId];
-    const cell = room.state.cells[cellId];
-    if (!def?.price || cell.ownerId !== null) return;
-    if (player.cash < def.price) return;
-
-    player.cash -= def.price;
-    cell.ownerId = player.id;
-    this.bumpStat(player, 'cellsBought', 1);
-    this.checkAndCreditMonopolies(room, player);
-
-    this.addLog(
-      room,
-      'BUY',
-      `🏷️ ${player.name} прикупил «${def.name}» за ${formatMoney(def.price)}!`,
-      `🏷️ ${player.name} купил «${def.cleanName}» за ${formatMoney(def.price)}!`,
-      player
-    );
-    this.finishPostRollOrAdvance(room);
-    this.emitState(room);
-  }
-
-  public declineProperty(room: ServerRoom, playerId: string) {
-    if (room.state.phase !== 'BUY_DECISION') return;
-    const player = room.state.players[room.state.currentPlayerIndex];
-    if (!player || player.id !== playerId) return;
-
-    const cellId = player.position;
-    const def = BOARD_CELLS[cellId];
-    const retro = room.state.settings.retroRules || room.state.settings.mode === 'retro';
-
-    if (!room.state.settings.auctionsEnabled || retro) {
-      this.addLog(
-        room,
-        'BUY',
-        `🙅‍♂️ ${player.name} прошёл мимо «${def.name}» (аукционы отключены).`,
-        `🙅‍♂️ ${player.name} отказался от покупки «${def.cleanName}».`,
-        player
-      );
-      this.finishPostRollOrAdvance(room);
-      this.emitState(room);
-      return;
-    }
-
-    const basePrice = def.price ?? 500;
-    const startPrice = basePrice + 100;
-    const n = room.state.players.length;
-    const orderedPlayers: PlayerState[] = [];
-    for (let offset = 1; offset <= n; offset++) {
-      orderedPlayers.push(room.state.players[(room.state.currentPlayerIndex + offset) % n]);
-    }
-    const participants = orderedPlayers
-      .filter((p) => !p.isBankrupt && p.cash >= startPrice)
-      .map((p) => p.id);
-
-    if (participants.length === 0) {
-      this.addLog(
-        room,
-        'AUCTION',
-        `😴 На «${def.name}» (от ${formatMoney(startPrice)}) ни у кого не хватило средств — лот снят.`,
-        `😴 На «${def.cleanName}» (от ${formatMoney(startPrice)}) ни у кого не хватило средств — лот снят.`
-      );
-      this.finishPostRollOrAdvance(room);
-      this.emitState(room);
-      return;
-    }
-
-    const firstBidder = room.state.players.find((p) => p.id === participants[0]);
-    room.state.auction = {
-      cellId,
-      isMortgagedAuction: false,
-      sellerId: null,
-      initiatorId: player.id,
-      currentBid: basePrice,
-      highestBidderId: null,
-      currentBidderId: participants[0],
-      activeParticipantIds: participants,
-      passedIds: [],
-      endsAt: Date.now() + 14000,
+  private get host(): EngineHost {
+    return {
+      emitState: (r) => this.emitState(r),
+      addLog: (r, type, text, cleanText, player) => this.addLog(r, type, text, cleanText, player),
+      bumpStat: (p, stat, delta) => this.bumpStat(p, stat, delta),
+      checkAndCreditMonopolies: (r, p) => this.checkAndCreditMonopolies(r, p),
+      setPhaseDeadline: (r, s) => this.setPhaseDeadline(r, s),
+      finishPostRollOrAdvance: (r) => this.finishPostRollOrAdvance(r),
+      chargePlayer: (r, d, cred, amt, reason, cleanReason, canShield, tax) =>
+        this.chargePlayer(r, d, cred, amt, reason, cleanReason, canShield, tax),
+      executeBankruptcy: (r, loser, cred, reason, cleanReason) =>
+        this.executeBankruptcy(r, loser, cred, reason, cleanReason),
+      checkVictory: (r) => this.checkVictory(r),
     };
-    room.state.phase = 'AUCTION';
-    this.addLog(
-      room,
-      'AUCTION',
-      `🔨 АУКЦИОН! «${def.name}» выставлено на торги от ${formatMoney(startPrice)}! Первым торгуется ${firstBidder?.name ?? 'игрок'}.`,
-      `🔨 Аукцион за «${def.cleanName}» от ${formatMoney(startPrice)}! Ход торгов: ${firstBidder?.name ?? 'игрок'}.`
-    );
-    this.emitState(room);
   }
 
-  // Выставление собственного заложенного поля на аукцион (п. 4.1 ТЗ / обновление «Расклад»)
-  public startMortgagedAuction(room: ServerRoom, playerId: string, cellId: number) {
-    const cur = room.state.players[room.state.currentPlayerIndex];
-    if (!cur || cur.id !== playerId) return;
-    if (room.state.phase !== 'PRE_ROLL') return;
-    if (!room.state.settings.auctionsEnabled || room.state.settings.retroRules) return;
-
-    const cell = room.state.cells[cellId];
-    const def = BOARD_CELLS[cellId];
-    if (!cell || !def?.price || cell.ownerId !== playerId || !cell.isMortgaged) return;
-
-    const basePrice = def.price;
-    const startBid = basePrice + 100;
-    const n = room.state.players.length;
-    const orderedPlayers: PlayerState[] = [];
-    for (let offset = 1; offset <= n; offset++) {
-      orderedPlayers.push(room.state.players[(room.state.currentPlayerIndex + offset) % n]);
-    }
-    const participants = orderedPlayers
-      .filter((p) => !p.isBankrupt && p.id !== playerId && p.cash >= startBid)
-      .map((p) => p.id);
-
-    if (participants.length === 0) return;
-
-    const firstBidder = room.state.players.find((p) => p.id === participants[0]);
-    room.state.auction = {
-      cellId,
-      isMortgagedAuction: true,
-      sellerId: playerId,
-      currentBid: basePrice,
-      highestBidderId: null,
-      currentBidderId: participants[0],
-      activeParticipantIds: participants,
-      passedIds: [],
-      endsAt: Date.now() + 14000,
-    };
-    room.state.phase = 'AUCTION';
-    this.addLog(
-      room,
-      'AUCTION',
-      `🔨 ЗАЛОГОВЫЙ АУКЦИОН! ${cur.name} выставил заложенное поле «${def.name}» от ${formatMoney(startBid)}! Первым торгуется ${firstBidder?.name ?? 'игрок'}.`,
-      `🔨 ${cur.name} выставил заложенное поле «${def.cleanName}» на аукцион от ${formatMoney(startBid)}!`
-    );
-    this.emitState(room);
-  }
-
-  private advanceAuctionTurn(room: ServerRoom, afterPlayerId: string) {
-    const auc = room.state.auction;
-    if (!auc) return;
-
-    for (const pid of auc.activeParticipantIds) {
-      if (auc.passedIds.includes(pid) || pid === auc.highestBidderId) continue;
-      const p = room.state.players.find((pl) => pl.id === pid);
-      if (!p || p.isBankrupt || p.cash < auc.currentBid + 100) {
-        auc.passedIds.push(pid);
-      }
-    }
-
-    const remaining = auc.activeParticipantIds.filter((id) => !auc.passedIds.includes(id));
-    if (remaining.length === 0 || (remaining.length === 1 && auc.highestBidderId === remaining[0])) {
-      this.finalizeAuction(room);
-      return;
-    }
-
-    const total = auc.activeParticipantIds.length;
-    const startIdx = Math.max(0, auc.activeParticipantIds.indexOf(afterPlayerId));
-    let nextId: string | null = null;
-    for (let offset = 1; offset <= total; offset++) {
-      const candidate = auc.activeParticipantIds[(startIdx + offset) % total];
-      if (!auc.passedIds.includes(candidate) && candidate !== auc.highestBidderId) {
-        nextId = candidate;
-        break;
-      }
-    }
-    if (!nextId) {
-      nextId = remaining.find((id) => id !== auc.highestBidderId) ?? remaining[0] ?? null;
-    }
-
-    if (!nextId || (nextId === auc.highestBidderId && remaining.length <= 1)) {
-      this.finalizeAuction(room);
-      return;
-    }
-
-    auc.currentBidderId = nextId;
-    auc.endsAt = Date.now() + 12000;
-    this.emitState(room);
-  }
-
-  public placeAuctionBid(room: ServerRoom, playerId: string, stepAmount: number = 100) {
-    if (room.state.phase !== 'AUCTION' || !room.state.auction) return;
-    const auc = room.state.auction;
-    if (!auc.activeParticipantIds.includes(playerId) || auc.passedIds.includes(playerId)) return;
-    if (auc.currentBidderId && auc.currentBidderId !== playerId) return;
-    if (auc.initiatorId === playerId && auc.highestBidderId && auc.highestBidderId !== playerId) {
-      return;
-    }
-
-    const player = room.state.players.find((p) => p.id === playerId);
-    const step = Math.max(100, Math.round(stepAmount / 100) * 100);
-    const nextBid = auc.currentBid + step;
-    if (!player || player.cash < nextBid) return;
-
-    auc.currentBid = nextBid;
-    auc.highestBidderId = playerId;
-
-    this.addLog(
-      room,
-      'AUCTION',
-      `💸 ${player.name} поднимает ставку до ${formatMoney(nextBid)}!`,
-      `💸 ${player.name} ставит ${formatMoney(nextBid)}!`,
-      player
-    );
-
-    // Игрок, выставивший карточку на аукцион, больше не может участвовать после того, как кто-то другой поставил ставку
-    if (auc.initiatorId && playerId !== auc.initiatorId && !auc.passedIds.includes(auc.initiatorId)) {
-      auc.passedIds.push(auc.initiatorId);
-      const initiator = room.state.players.find((p) => p.id === auc.initiatorId);
-      if (initiator) {
-        this.addLog(
-          room,
-          'AUCTION',
-          `🚫 ${initiator.name} выбывает из аукциона после чужой ставки.`,
-          `🚫 ${initiator.name} не может участвовать в торгах после ставки соперника.`,
-          initiator
-        );
-      }
-    }
-
-    this.advanceAuctionTurn(room, playerId);
-  }
-
-  public passAuction(room: ServerRoom, playerId: string) {
-    if (room.state.phase !== 'AUCTION' || !room.state.auction) return;
-    const auc = room.state.auction;
-    if (!auc.activeParticipantIds.includes(playerId)) return;
-    if (auc.currentBidderId && auc.currentBidderId !== playerId) return;
-
-    if (!auc.passedIds.includes(playerId)) {
-      auc.passedIds.push(playerId);
-      const player = room.state.players.find((p) => p.id === playerId);
-      const def = BOARD_CELLS[auc.cellId];
-      if (player && def) {
-        this.addLog(
-          room,
-          'AUCTION',
-          `🏳️ ${player.name} пасует на торгах за «${def.name}».`,
-          `🏳️ ${player.name} вышел из торгов за «${def.cleanName}».`,
-          player
-        );
-      }
-    }
-    this.advanceAuctionTurn(room, playerId);
-  }
-
-  public finalizeAuction(room: ServerRoom) {
-    const auc = room.state.auction;
-    if (!auc) return;
-    const def = BOARD_CELLS[auc.cellId];
-    const cell = room.state.cells[auc.cellId];
-
-    if (auc.highestBidderId) {
-      const winner = room.state.players.find((p) => p.id === auc.highestBidderId);
-      if (winner && winner.cash >= auc.currentBid) {
-        winner.cash -= auc.currentBid;
-        if (auc.isMortgagedAuction && auc.sellerId) {
-          const seller = room.state.players.find((p) => p.id === auc.sellerId);
-          const bankCut = def.price ? def.price - getMortgageValue(auc.cellId) : 0;
-          const sellerProfit = Math.max(0, auc.currentBid - bankCut);
-          if (seller) seller.cash += sellerProfit;
-          cell.ownerId = winner.id;
-          cell.isMortgaged = false;
-          cell.mortgageRoundsLeft = null;
-          this.bumpStat(winner, 'cellsBought', 1);
-          this.checkAndCreditMonopolies(room, winner);
-          this.addLog(
-            room,
-            'AUCTION',
-            `🏆 ИТОГ АУКЦИОНА: ${winner.name} забрал «${def.name}» (выкуплено!) за ${formatMoney(
-              auc.currentBid
-            )}. Навар продавца: +${formatMoney(sellerProfit)}!`,
-            `🏆 Итог аукциона: ${winner.name} выиграл «${def.cleanName}» за ${formatMoney(auc.currentBid)}.`,
-            winner
-          );
-        } else {
-          cell.ownerId = winner.id;
-          this.bumpStat(winner, 'cellsBought', 1);
-          this.checkAndCreditMonopolies(room, winner);
-          this.addLog(
-            room,
-            'AUCTION',
-            `🏆 ИТОГ АУКЦИОНА: ${winner.name} забрал «${def.name}» за ${formatMoney(auc.currentBid)}!`,
-            `🏆 Итог аукциона: ${winner.name} купил «${def.cleanName}» за ${formatMoney(auc.currentBid)}!`,
-            winner
-          );
-        }
-      }
-    } else {
-      this.addLog(
-        room,
-        'AUCTION',
-        `😴 На «${def.name}» никто не поставил ни копейки — лот снят.`,
-        `😴 Торги за «${def.cleanName}» завершились без ставок.`
-      );
-    }
-
-    room.state.auction = null;
-    if (auc.isMortgagedAuction) {
-      room.state.phase = 'PRE_ROLL';
-      this.setPhaseDeadline(room);
-    } else {
-      this.finishPostRollOrAdvance(room);
-    }
-    this.emitState(room);
-  }
-
-  // ================== СТРОЙКА, ЗАЛОГ, ВЫКУП (НЕ СБРАСЫВАЮТ ТАЙМЕР ХОДА!) ==================
-
+  public buyProperty(room: ServerRoom, playerId: string) { buyPropertyHandler(this.host, room, playerId); }
+  public declineProperty(room: ServerRoom, playerId: string) { declinePropertyHandler(this.host, room, playerId); }
+  public startMortgagedAuction(room: ServerRoom, playerId: string, cellId: number) { startMortgagedAuctionHandler(this.host, room, playerId, cellId); }
+  public placeAuctionBid(room: ServerRoom, playerId: string, stepAmount: number = 100) { placeAuctionBidHandler(this.host, room, playerId, stepAmount); }
+  public passAuction(room: ServerRoom, playerId: string) { passAuctionHandler(this.host, room, playerId); }
+  public finalizeAuction(room: ServerRoom) { finalizeAuctionHandler(this.host, room); }
   public buildBranch(room: ServerRoom, playerId: string, cellId: number) {
     const check = canBuildBranch(room.state, playerId, cellId);
     if (!check.ok) return;
@@ -3098,361 +2767,19 @@ export class GameManager {
     return { ok: true };
   }
 
-  private groupHasAnyBranch(room: ServerRoom, cellId: number): boolean {
-    const grp = BOARD_CELLS[cellId]?.groupId;
-    if (!grp) return false;
-    return getGroupCellDefs(grp).some((d) => (room.state.cells[d.id]?.branches ?? 0) > 0);
+  public extendTurnForTradeDraft(room: ServerRoom, playerId: string) { extendTurnForTradeDraftHandler(this.host, room, playerId); }
+  public proposeTrade(room: ServerRoom, fromPlayerId: string, toPlayerId: string, offer: TradeSide, request: TradeSide): { ok: boolean; error?: string } {
+    return proposeTradeHandler(this.host, room, fromPlayerId, toPlayerId, offer, request);
   }
-
-  public extendTurnForTradeDraft(room: ServerRoom, playerId: string) {
-    if (room.state.status !== 'PLAYING' || room.state.activeTrade) return;
-    const cur = room.state.players[room.state.currentPlayerIndex];
-    if (!cur || cur.id !== playerId) return;
-    if ((room.state.tradesProposedThisTurn ?? 0) >= 3 || room.tradeDraftExtensionsThisTurn >= 3) {
-      return;
-    }
-    room.tradeDraftExtensionsThisTurn += 1;
-    if (room.state.turnDeadlineAt !== null && room.state.settings.turnTimerSec > 0) {
-      room.state.turnDeadlineAt += 20000;
-      this.emitState(room);
-    }
+  public respondTrade(room: ServerRoom, playerId: string, accept: boolean) { respondTradeHandler(this.host, room, playerId, accept); }
+  public startKickVote(room: ServerRoom, initiatorId: string, targetId: string): { ok: boolean; error?: string } {
+    return startKickVoteHandler(this.host, room, initiatorId, targetId);
   }
-
-  public proposeTrade(
-    room: ServerRoom,
-    fromId: string,
-    toId: string,
-    offer: TradeSide,
-    request: TradeSide
-  ): { ok: boolean; error?: string } {
-    if (room.state.status !== 'PLAYING' || room.state.activeTrade) {
-      return { ok: false, error: 'Сейчас уже висит другой договор' };
-    }
-    const cur = room.state.players[room.state.currentPlayerIndex];
-    if (!cur || cur.id !== fromId) {
-      return { ok: false, error: 'Отправлять договор можно только в свой ход' };
-    }
-    if ((room.state.tradesProposedThisTurn ?? 0) >= 3) {
-      return { ok: false, error: 'За ход можно предложить максимум 3 сделки' };
-    }
-    const fromP = room.state.players.find((p) => p.id === fromId);
-    const toP = room.state.players.find((p) => p.id === toId);
-    if (!fromP || !toP || toP.isBankrupt || fromId === toId) {
-      return { ok: false, error: 'Некорректный получатель сделки' };
-    }
-
-    const cleanOffer: TradeSide = {
-      cash: Math.max(0, Math.round(offer.cash || 0)),
-      propertyIds: Array.from(new Set(offer.propertyIds || [])),
-      shields: Math.max(0, Math.min(fromP.shields, offer.shields || 0)),
-    };
-    const cleanReq: TradeSide = {
-      cash: Math.max(0, Math.round(request.cash || 0)),
-      propertyIds: Array.from(new Set(request.propertyIds || [])),
-      shields: Math.max(0, Math.min(toP.shields, request.shields || 0)),
-    };
-
-    if (fromP.cash < cleanOffer.cash || toP.cash < cleanReq.cash) {
-      return { ok: false, error: 'У одной из сторон не хватает налички' };
-    }
-
-    // Проверка владения и отсутствия филиалов на обмениваемых полях (и в их отраслях)
-    for (const cid of cleanOffer.propertyIds) {
-      const c = room.state.cells[cid];
-      if (!c || c.ownerId !== fromId || c.branches > 0 || this.groupHasAnyBranch(room, cid)) {
-        return { ok: false, error: 'Нельзя обменивать чужие поля или поля из отраслей с филиалами' };
-      }
-    }
-    for (const cid of cleanReq.propertyIds) {
-      const c = room.state.cells[cid];
-      if (!c || c.ownerId !== toId || c.branches > 0 || this.groupHasAnyBranch(room, cid)) {
-        return { ok: false, error: 'На запрашиваемом поле (или в его отрасли) построены филиалы' };
-      }
-    }
-
-    const fairness = checkTradeFairness(room.state.cells, cleanOffer, cleanReq);
-    if (fairness.offerValue === 0 && fairness.requestValue === 0) {
-      return { ok: false, error: 'Пустой договор отправлять нельзя' };
-    }
-    if (room.state.settings.fairTradeLimit && !fairness.fair) {
-      return {
-        ok: false,
-        error: `Анти-абуз фильтр ±50%: перекос сделки ${fairness.diffPercent}% (${formatMoney(
-          fairness.offerValue
-        )} vs ${formatMoney(fairness.requestValue)})`,
-      };
-    }
-
-    const trade: TradeOffer = {
-      id: `tr_${randomId(6)}`,
-      fromPlayerId: fromId,
-      toPlayerId: toId,
-      offer: cleanOffer,
-      request: cleanReq,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 35000,
-    };
-    room.state.activeTrade = trade;
-    room.state.tradesProposedThisTurn = (room.state.tradesProposedThisTurn ?? 0) + 1;
-    if (room.state.turnDeadlineAt !== null && room.state.settings.turnTimerSec > 0) {
-      room.state.turnDeadlineAt = Math.max(
-        room.state.turnDeadlineAt + 25000,
-        trade.expiresAt + 15000
-      );
-    }
-    room.activeTradeMortgagedIds = new Set(
-      [...cleanOffer.propertyIds, ...cleanReq.propertyIds].filter((cid) =>
-        Boolean(room.state.cells[cid]?.isMortgaged)
-      )
-    );
-
-    const tpl =
-      TRADE_PROPOSAL_TEMPLATES[Math.floor(Math.random() * TRADE_PROPOSAL_TEMPLATES.length)];
-    const hardMsg = tpl.hard.replace('{from}', fromP.name).replace('{to}', toP.name);
-    const cleanMsg = tpl.clean.replace('{from}', fromP.name).replace('{to}', toP.name);
-
-    this.addLog(room, 'TRADE', hardMsg, cleanMsg, fromP);
-    this.emitState(room);
-    return { ok: true };
+  public castKickVote(room: ServerRoom, voterId: string, approve: boolean): { ok: boolean; error?: string } {
+    return castKickVoteHandler(this.host, room, voterId, approve);
   }
-
-  public respondTrade(room: ServerRoom, playerId: string, accept: boolean) {
-    const trade = room.state.activeTrade;
-    if (!trade) return;
-    if (playerId !== trade.toPlayerId && (accept || playerId !== trade.fromPlayerId)) return;
-
-    const fromP = room.state.players.find((p) => p.id === trade.fromPlayerId);
-    const toP = room.state.players.find((p) => p.id === trade.toPlayerId);
-    const snapshotMortgaged = room.activeTradeMortgagedIds;
-    room.state.activeTrade = null;
-    room.activeTradeMortgagedIds = null;
-
-    if (!accept || !fromP || !toP) {
-      this.addLog(
-        room,
-        'TRADE',
-        `❌ Договор между ${fromP?.name} и ${toP?.name} послан лесом!`,
-        `❌ Предложение обмена отклонено.`
-      );
-      this.emitState(room);
-      return;
-    }
-
-    // Повторная валидация перед передачей активов (защита от гонки стройки филиалов / залога / потери поля)
-    const cashOrShieldsInvalid =
-      fromP.isBankrupt ||
-      toP.isBankrupt ||
-      fromP.cash < trade.offer.cash ||
-      toP.cash < trade.request.cash ||
-      fromP.shields < trade.offer.shields ||
-      toP.shields < trade.request.shields;
-
-    const offerPropsInvalid = trade.offer.propertyIds.some((cid) => {
-      const c = room.state.cells[cid];
-      if (!c || c.ownerId !== fromP.id || c.branches > 0 || this.groupHasAnyBranch(room, cid)) {
-        return true;
-      }
-      if (c.isMortgaged && !snapshotMortgaged?.has(cid)) {
-        return true;
-      }
-      return false;
-    });
-
-    const reqPropsInvalid = trade.request.propertyIds.some((cid) => {
-      const c = room.state.cells[cid];
-      if (!c || c.ownerId !== toP.id || c.branches > 0 || this.groupHasAnyBranch(room, cid)) {
-        return true;
-      }
-      if (c.isMortgaged && !snapshotMortgaged?.has(cid)) {
-        return true;
-      }
-      return false;
-    });
-
-    if (cashOrShieldsInvalid || offerPropsInvalid || reqPropsInvalid) {
-      this.addLog(
-        room,
-        'TRADE',
-        `⚠️ Сделка между ${fromP.name} и ${toP.name} сорвалась: состав активов или филиалов изменился!`,
-        `⚠️ Сделка между ${fromP.name} и ${toP.name} отменена: активы сторон изменились!`
-      );
-      this.emitState(room);
-      return;
-    }
-
-    fromP.cash = fromP.cash - trade.offer.cash + trade.request.cash;
-    toP.cash = toP.cash - trade.request.cash + trade.offer.cash;
-    fromP.shields = fromP.shields - trade.offer.shields + trade.request.shields;
-    toP.shields = toP.shields - trade.request.shields + trade.offer.shields;
-
-    for (const cid of trade.offer.propertyIds) {
-      room.state.cells[cid].ownerId = toP.id;
-    }
-    for (const cid of trade.request.propertyIds) {
-      room.state.cells[cid].ownerId = fromP.id;
-    }
-
-    this.checkAndCreditMonopolies(room, fromP);
-    this.checkAndCreditMonopolies(room, toP);
-
-    const offerHard = this.formatTradeSideSummary(trade.offer, false);
-    const requestHard = this.formatTradeSideSummary(trade.request, false);
-    const offerClean = this.formatTradeSideSummary(trade.offer, true);
-    const requestClean = this.formatTradeSideSummary(trade.request, true);
-
-    this.addLog(
-      room,
-      'TRADE',
-      `🤝 По рукам! ${fromP.name} отдал [${offerHard}] ⇄ ${toP.name} отдал [${requestHard}].`,
-      `🤝 Сделка! ${fromP.name} отдал [${offerClean}] ⇄ ${toP.name} отдал [${requestClean}].`
-    );
-    this.emitState(room);
-  }
-
-  private formatTradeSideSummary(side: TradeSide, clean = false): string {
-    const parts: string[] = [];
-    if (side.propertyIds.length > 0) {
-      const propNames = side.propertyIds.map((cid) => {
-        const def = BOARD_CELLS[cid];
-        const label = clean ? def?.cleanName || def?.name : def?.name;
-        return label || `#${cid}`;
-      });
-      parts.push(propNames.join(', '));
-    }
-    if (side.cash > 0) {
-      parts.push(formatMoney(side.cash));
-    }
-    if (side.shields > 0) {
-      parts.push(`🛡️×${side.shields}`);
-    }
-    return parts.length > 0 ? parts.join(' + ') : 'ничего';
-  }
-
-  // ================== ГОЛОСОВАНИЕ ЗА КИК ==================
-
-  public startKickVote(
-    room: ServerRoom,
-    initiatorId: string,
-    targetId: string
-  ): { ok: boolean; error?: string } {
-    if (room.state.status !== 'PLAYING') {
-      return { ok: false, error: 'Голосование доступно только во время игры' };
-    }
-    if (room.state.activeKickVote) {
-      return { ok: false, error: 'Уже идёт другое голосование за кик' };
-    }
-    const initiator = room.state.players.find((p) => p.id === initiatorId);
-    const target = room.state.players.find((p) => p.id === targetId);
-    if (!initiator || initiator.isBankrupt || !target || target.isBankrupt || initiatorId === targetId) {
-      return { ok: false, error: 'Некорректная цель для кика' };
-    }
-
-    const eligible = room.state.players.filter((p) => !p.isBankrupt && p.id !== targetId);
-    if (eligible.length < 2) {
-      return { ok: false, error: 'Голосование за кик доступно при 3 и более активных игроках' };
-    }
-
-    const vote: KickVoteState = {
-      initiatorId,
-      targetId,
-      votes: { [initiatorId]: true },
-      eligibleVoterIds: eligible.map((p) => p.id),
-      expiresAt: Date.now() + 30_000,
-    };
-    room.state.activeKickVote = vote;
-
-    const targetBadge = logAvatarBadge(target.avatar);
-    this.addLog(
-      room,
-      'SYSTEM',
-      `🗳️ ${initiator.name} запустил голосование за кик ${targetBadge} ${target.name} (${target.name} не голосует)!`,
-      `🗳️ Запущено голосование за кик ${targetBadge} ${target.name}.`
-    );
-    this.emitState(room);
-    return { ok: true };
-  }
-
-  public castKickVote(
-    room: ServerRoom,
-    playerId: string,
-    approve: boolean
-  ): { ok: boolean; error?: string } {
-    const vote = room.state.activeKickVote;
-    if (!vote || room.state.status !== 'PLAYING') {
-      return { ok: false, error: 'Нет активного голосования' };
-    }
-    if (playerId === vote.targetId || !vote.eligibleVoterIds.includes(playerId)) {
-      return { ok: false, error: 'Игрок, против которого идёт голосование, не может голосовать' };
-    }
-
-    vote.votes[playerId] = Boolean(approve);
-    this.evaluateKickVoteProgress(room);
-    return { ok: true };
-  }
-
-  private evaluateKickVoteProgress(room: ServerRoom) {
-    const vote = room.state.activeKickVote;
-    if (!vote) return;
-    const totalEligible = vote.eligibleVoterIds.length;
-    if (totalEligible < 2) {
-      this.resolveKickVote(room, false, 'недостаточно голосующих');
-      return;
-    }
-
-    const neededYes = Math.floor(totalEligible / 2) + 1;
-    let yesCount = 0;
-    let noCount = 0;
-    for (const vid of vote.eligibleVoterIds) {
-      if (vote.votes[vid] === true) yesCount++;
-      else if (vote.votes[vid] === false) noCount++;
-    }
-
-    if (yesCount >= neededYes) {
-      this.resolveKickVote(room, true, `${yesCount}/${totalEligible}`);
-      return;
-    }
-
-    const maxPossibleYes = totalEligible - noCount;
-    if (maxPossibleYes < neededYes || yesCount + noCount >= totalEligible) {
-      this.resolveKickVote(room, false, `${yesCount}/${totalEligible}`);
-      return;
-    }
-
-    this.emitState(room);
-  }
-
-  private resolveKickVote(room: ServerRoom, passed: boolean, details: string) {
-    const vote = room.state.activeKickVote;
-    if (!vote) return;
-    room.state.activeKickVote = null;
-
-    const target = room.state.players.find((p) => p.id === vote.targetId);
-    if (passed && target && !target.isBankrupt) {
-      const targetBadge = logAvatarBadge(target.avatar);
-      this.addLog(
-        room,
-        'SYSTEM',
-        `👢 Голосование принято (${details}): ${targetBadge} ${target.name} отправляется на завод!`,
-        `👢 Голосование принято (${details}): ${targetBadge} ${target.name} кикнут из матча.`
-      );
-      this.executeBankruptcy(
-        room,
-        target,
-        'BANK',
-        'Кикнут голосованием большинства игроков',
-        'Исключён голосованием игроков'
-      );
-    } else {
-      this.addLog(
-        room,
-        'SYSTEM',
-        `🙅 Голосование за кик ${target?.name ?? 'игрока'} провалилось (${details}).`,
-        `🙅 Кик ${target?.name ?? 'игрока'} отклонён (${details}).`
-      );
-    }
-    this.emitState(room);
-  }
-
+  private evaluateKickVoteProgress(room: ServerRoom) { evaluateKickVoteProgressHandler(this.host, room); }
+  private resolveKickVote(room: ServerRoom, passed: boolean, details: string) { resolveKickVoteHandler(this.host, room, passed, details); }
   // ================== ЗАВЕРШЕНИЕ ХОДА, БАНКРОТСТВО, ПОБЕДА ==================
 
   private finishPostRollOrAdvance(room: ServerRoom) {
