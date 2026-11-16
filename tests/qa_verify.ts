@@ -7,7 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { GameManager } from '../server/gameEngine.ts';
 import { BOARD_CELLS } from '../shared/boardData.ts';
 import { CHANCE_DECK, TAUNT_COOLDOWN_MS, TAUNTS, TOKEN_COLORS } from '../shared/memeContent.ts';
-import { calculateRent, canBuildBranch, canMortgageCell } from '../shared/rules.ts';
+import {
+  calculateRent,
+  canBuildBranch,
+  canMortgageCell,
+  canSellBranch,
+  canUnmortgageCell,
+} from '../shared/rules.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_DIR = path.resolve(__dirname, '..');
@@ -304,6 +310,24 @@ function testEngineMechanics() {
   if (!rRules.state.cells[28].isMortgaged) {
     throw new Error('Expected cell 28 to ALSO be mortgaged in the same turn');
   }
+  // Проверка защиты от выкупа из залога и продажи филиала в чужой ход
+  rRules.state.cells[14].ownerId = 'u2';
+  rRules.state.cells[14].isMortgaged = true;
+  rRules.state.cells[16].ownerId = 'u2';
+  rRules.state.cells[16].branches = 1;
+  if (canUnmortgageCell(rRules.state, 'u2', 14).ok) {
+    throw new Error('Expected unmortgage out of turn to be blocked');
+  }
+  if (canSellBranch(rRules.state, 'u2', 16).ok) {
+    throw new Error('Expected sellBranch out of turn (without pending debt) to be blocked');
+  }
+  if (!canUnmortgageCell(rRules.state, 'u1', 12).ok) {
+    throw new Error('Expected unmortgage in own turn to be allowed');
+  }
+  gm.unmortgageProperty(rRules, 'u1', 12);
+  if (rRules.state.cells[12].isMortgaged) {
+    throw new Error('Expected cell 12 to be unmortgaged in own turn');
+  }
 
   // 6. Тест автоперехода хода без POST_ROLL после броска (дубль оставляет ход, не-дубль передаёт)
   const rTurn = gm.createRoom(
@@ -344,7 +368,7 @@ function testEngineMechanics() {
           throw new Error('Expected double roll to grant extra PRE_ROLL to same player');
         }
         sawDoubleExtraTurn = true;
-      } else if (!last.isDouble && !last.isTriple) {
+      } else if (!last.isDouble && !last.isTriple && rTurn.state.lastCardPopup?.effect !== 'EXTRA_TURN') {
         if (rTurn.state.currentPlayerIndex === curIdx) {
           throw new Error('Expected non-double roll to auto-advance turn to next player');
         }
@@ -571,18 +595,24 @@ function testEngineMechanics() {
   if (rNew.state.auction?.currentBid !== 4000 || rNew.state.auction?.highestBidderId !== null) {
     throw new Error('Out-of-turn auction bid should be ignored!');
   }
-  // В свою очередь n2 ставит +100 -> 4100, очередь переходит к n3
+  // В свою очередь n2 ставит +100 -> 4100. Инициатор n1 выбывает после чужой ставки, очередь переходит к n3
   gm.placeAuctionBid(rNew, 'n2', 100);
-  if (rNew.state.auction?.currentBid !== 4100 || rNew.state.auction?.currentBidderId !== 'n3') {
-    throw new Error(`Expected bid 4100 and turn=n3, got ${JSON.stringify(rNew.state.auction)}`);
+  if (
+    rNew.state.auction?.currentBid !== 4100 ||
+    rNew.state.auction?.currentBidderId !== 'n3' ||
+    !rNew.state.auction?.passedIds.includes('n1')
+  ) {
+    throw new Error(`Expected bid 4100, n1 passed after foreign bid, and turn=n3, got ${JSON.stringify(rNew.state.auction)}`);
   }
+  // n1 больше не может ставить после чужой ставки
+  gm.placeAuctionBid(rNew, 'n1', 100);
+  if (rNew.state.auction?.currentBid !== 4100 || rNew.state.auction?.highestBidderId !== 'n2') {
+    throw new Error('Initiator who declined cell should not be able to bid after someone else placed a bid!');
+  }
+  // После паса n3 остаётся только лидер n2 -> аукцион завершается сразу победой n2!
   gm.passAuction(rNew, 'n3');
-  if (rNew.state.auction?.currentBidderId !== 'n1') {
-    throw new Error(`Expected turn=n1 after n3 pass, got ${rNew.state.auction?.currentBidderId}`);
-  }
-  gm.passAuction(rNew, 'n1');
-  if (rNew.state.cells[39].ownerId !== 'n2' || rNew.state.players[1].cash !== 15000 - 4100) {
-    throw new Error(`Expected n2 to win cell 39 for 4100, owner=${rNew.state.cells[39].ownerId}, cash=${rNew.state.players[1].cash}`);
+  if (rNew.state.phase === 'AUCTION' || rNew.state.cells[39].ownerId !== 'n2' || rNew.state.players[1].cash !== 15000 - 4100) {
+    throw new Error(`Expected n2 to immediately win cell 39 for 4100 after n3 pass, phase=${rNew.state.phase}, owner=${rNew.state.cells[39].ownerId}, cash=${rNew.state.players[1].cash}`);
   }
 
   // 11. Тест секретных смешных уведомлений договоров
@@ -910,6 +940,89 @@ function testEngineMechanics() {
     throw new Error(`Expected second player taunt after 10s cooldown to succeed, got ${tauntEmitted}`);
   }
 
+  // 15. Тест обратного хода через Старт (деньги НЕ начисляются) и стакинга дубль + Шанс EXTRA_TURN (= 2 доп. хода)
+  const rNewRules = gm.createRoom(
+    { playerId: 'rp1', socketId: 'rs1', name: 'RP1', avatar: '🐸', color: '#dc2626', diceSkin: 'classic' },
+    'classic'
+  );
+  gm.joinRoom(rNewRules.state.code, {
+    playerId: 'rp2',
+    socketId: 'rs2',
+    name: 'RP2',
+    avatar: '🤡',
+    color: '#2563eb',
+    diceSkin: 'classic',
+  });
+  gm.startGame(rNewRules, 'rp1');
+
+  // 15а. Обратный ход через клетку 0 (Старт): стояли на #2, шагаем назад на 4 -> #38. Кэш НЕ должен увеличиться на +2000/+3000
+  const rp1 = rNewRules.state.players[0];
+  rp1.position = 2;
+  rp1.reverseTurns = 2;
+  const cashBeforeReverseStart = rp1.cash;
+  (gm as unknown as { moveClockwiseAndResolve: (r: typeof rNewRules, p: typeof rp1, s: number) => void }).moveClockwiseAndResolve(rNewRules, rp1, 4);
+  if (rp1.position !== 38) {
+    throw new Error(`Expected reverse move from 2 by 4 to land on 38, got ${rp1.position}`);
+  }
+  if (rp1.cash > cashBeforeReverseStart) {
+    throw new Error(`Expected NO Start salary on reverse move across 0, cash went ${cashBeforeReverseStart} -> ${rp1.cash}`);
+  }
+  // Также тест точного приземления на Старт (0) задом наперёд: стояли на #3, идём назад на 3 -> #0
+  rNewRules.state.pendingDebt = null;
+  rp1.position = 3;
+  rp1.reverseTurns = 1;
+  rp1.cash = 10000;
+  (gm as unknown as { moveClockwiseAndResolve: (r: typeof rNewRules, p: typeof rp1, s: number) => void }).moveClockwiseAndResolve(rNewRules, rp1, 3);
+  if (rp1.position !== 0 || rp1.cash !== 10000) {
+    throw new Error(`Expected NO Start bonus when landing backwards on 0, pos=${rp1.position}, cash=${rp1.cash}`);
+  }
+
+  // 15б. Дубль + карточка Шанс «Ещё один ход» -> должно остаться 2 дополнительных хода подряд
+  rNewRules.state.currentPlayerIndex = 0;
+  rNewRules.state.phase = 'PRE_ROLL';
+  rp1.inJail = false;
+  rp1.doublesStreak = 1;
+  (gm as unknown as { setExtraTurns: (r: typeof rNewRules, c: number) => void }).setExtraTurns(rNewRules, 1);
+  rNewRules.state.phase = 'CHANCE';
+  rNewRules.pendingChance = {
+    playerId: 'rp1',
+    card: {
+      id: 'bon_triple_energy',
+      kind: 'EXTRA_TURN',
+      title: 'Ещё ход',
+      cleanTitle: 'Ещё ход',
+      description: 'Тест',
+      cleanDescription: 'Тест',
+      icon: '⚡',
+    },
+  };
+  gm.acknowledgeChance(rNewRules, 'rp1');
+  if (
+    rNewRules.state.currentPlayerIndex !== 0 ||
+    !rNewRules.state.hasExtraTurn ||
+    rNewRules.state.extraTurnsLeft !== 1
+  ) {
+    throw new Error(
+      `Expected extra turn #1 active with 1 more queued after double+EXTRA_TURN, got idx=${rNewRules.state.currentPlayerIndex}, hasExtra=${rNewRules.state.hasExtraTurn}, left=${rNewRules.state.extraTurnsLeft}`
+    );
+  }
+  // Симулируем завершение первого доп. хода (без дубля) -> должен остаться 2-й доп. ход у rp1!
+  (gm as unknown as { finishPostRollOrAdvance: (r: typeof rNewRules) => void }).finishPostRollOrAdvance(rNewRules);
+  if (
+    rNewRules.state.currentPlayerIndex !== 0 ||
+    rNewRules.state.extraTurnsLeft !== 0 ||
+    rNewRules.state.hasExtraTurn !== false
+  ) {
+    throw new Error(
+      `Expected extra turn #2 active for rp1 with 0 queued left, got idx=${rNewRules.state.currentPlayerIndex}, left=${rNewRules.state.extraTurnsLeft}`
+    );
+  }
+  // Завершаем 2-й доп. ход -> теперь ход переходит к rp2 (индекс 1)
+  (gm as unknown as { finishPostRollOrAdvance: (r: typeof rNewRules) => void }).finishPostRollOrAdvance(rNewRules);
+  if (rNewRules.state.currentPlayerIndex !== 1) {
+    throw new Error(`Expected turn to advance to player 1 after both extra turns, got ${rNewRules.state.currentPlayerIndex}`);
+  }
+
   return 'ENGINE_ALL_MODES_OK';
 }
 
@@ -1025,7 +1138,7 @@ async function main() {
     }
     console.log('[QA] Auth & Profile API checks: PASS');
 
-    // Проверка доступности и размера всех 8 голосовых .mp3 файлов по HTTP
+    // Проверка доступности и размера всех 16 голосовых .mp3 файлов по HTTP
     const voiceMp3Files = [
       '/sounds/taunt_balls.mp3',
       '/sounds/taunt_mi_bombo.mp3',
@@ -1035,6 +1148,14 @@ async function main() {
       '/sounds/taunt_laugh.mp3',
       '/sounds/taunt_casino.mp3',
       '/sounds/taunt_gay.mp3',
+      '/sounds/taunt_coal_plant.mp3',
+      '/sounds/taunt_batya_doma.mp3',
+      '/sounds/taunt_podstavili.mp3',
+      '/sounds/taunt_net_idi.mp3',
+      '/sounds/taunt_tck.mp3',
+      '/sounds/taunt_zrya_polez.mp3',
+      '/sounds/taunt_am_am_am.mp3',
+      '/sounds/taunt_spasibo_horosho.mp3',
     ];
     for (const mp3Path of voiceMp3Files) {
       const audioRes = await checkAudioHttp(`http://127.0.0.1:${PORT}${mp3Path}`);
@@ -1439,13 +1560,13 @@ async function main() {
     fs.writeFileSync(path.join(shotDir, '03_post_move.jpg'), Buffer.from(shotLand.data, 'base64'));
 
     // Отыгрываем ~6 секунд с 2 ботами (нажимаем доступные кнопки хода человека), проверяем 1920x1080, КРЕДИТ и цветные ники
-    for (let step = 0; step < 6; step++) {
+    for (let step = 0; step < 8; step++) {
       await sleep(1000);
       await cdp.eval(`(() => {
         const btns = Array.from(document.querySelectorAll('button'));
         const actionBtn = btns.find(b =>
           !b.disabled &&
-          /БРОСИТЬ КУБИКИ|Купить за|Выставить на аукцион|Пропустить|Оплатить|Прыгнуть!|Пас/i.test(b.textContent || '')
+          /БРОСИТЬ КУБИКИ|Купить за|Выставить на аукцион|Пропустить|Оплатить|Прыгнуть!|Случайный прыжок|Применить Шанс|Пас/i.test(b.textContent || '')
         );
         if (actionBtn) actionBtn.click();
       })()`);
@@ -1617,6 +1738,15 @@ async function main() {
           throw new Error(`Mobile cell artwork collapsed or invisible on 390x844: ${JSON.stringify(mobileArtAudit)}`);
         }
 
+        // Если остался незавершённый ход (напр. Квантовый телепорт или Шанс), разрешаем его
+        await cdp.eval(`(() => {
+          const actionBtn = Array.from(document.querySelectorAll('button')).find(b =>
+            !b.disabled && /Случайный прыжок|Прыгнуть!|Применить Шанс|Пропустить|Пас/i.test(b.textContent || '')
+          );
+          if (actionBtn) actionBtn.click();
+        })()`);
+        await sleep(350);
+
         await cdp.eval(`(() => {
           const c29 = document.querySelector('[data-cell-id="29"]');
           if (c29) c29.click();
@@ -1624,16 +1754,30 @@ async function main() {
         await sleep(250);
         const mobilePopCheck = await cdp.eval(`(() => {
           const dlg = document.querySelector('[role="dialog"]');
+          const rect = dlg ? dlg.getBoundingClientRect() : { left: -1, top: -1, right: 9999, bottom: 9999, width: 0, height: 0 };
           const txtContent = dlg ? dlg.textContent || '' : '';
           return {
             open: !!dlg,
             hasTitle: txtContent.includes('Брейнрот-лента 24/7'),
             hasDesc: txtContent.includes('кинетический песок'),
+            inViewport:
+              rect.width > 240 &&
+              rect.left >= 0 &&
+              rect.top >= 0 &&
+              rect.right <= window.innerWidth &&
+              rect.bottom <= window.innerHeight,
+            rect: {
+              left: Math.round(rect.left),
+              top: Math.round(rect.top),
+              right: Math.round(rect.right),
+              bottom: Math.round(rect.bottom),
+              vh: window.innerHeight,
+            },
           };
         })()`);
         console.log('[QA] Mobile 390x844 card popover check:', JSON.stringify(mobilePopCheck));
-        if (!mobilePopCheck.open || !mobilePopCheck.hasTitle || !mobilePopCheck.hasDesc) {
-          throw new Error(`Mobile card popover missing title or description: ${JSON.stringify(mobilePopCheck)}`);
+        if (!mobilePopCheck.open || !mobilePopCheck.hasTitle || !mobilePopCheck.hasDesc || !mobilePopCheck.inViewport) {
+          throw new Error(`Mobile card popover shifted or clipped outside viewport: ${JSON.stringify(mobilePopCheck)}`);
         }
         const shotMobilePop = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 88 });
         fs.writeFileSync(path.join(shotDir, '05b_mobile_popover_390x844.jpg'), Buffer.from(shotMobilePop.data, 'base64'));
@@ -1694,6 +1838,204 @@ async function main() {
     console.log('[QA] Reconnected back to board:', reconnectedToBoard);
     if (!reconnectedToBoard) {
       throw new Error('Expected clicking [data-testid="reconnect-room-btn"] to return to #monopoly-board');
+    }
+
+    // E2E проверка постройки филиала, продажи филиала, залога и выкупа на МОБИЛЬНОЙ ВЕРСИИ (360x640 и 390x844)
+    // Сдаёмся/выходим из текущей комнаты и запускаем режим «Расклад» на телефоне, где со старта есть монополии!
+    await cdp.eval(`(() => {
+      const leaveBtn = document.querySelector('[data-testid="board-leave-btn"]');
+      if (leaveBtn) leaveBtn.click();
+    })()`);
+    await sleep(400);
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 360,
+      height: 640,
+      deviceScaleFactor: 2,
+      mobile: true,
+    });
+    await sleep(300);
+
+    // Открываем игру со свежим профилем в режиме «Расклад» (3 игрока, все поля розданы монополиями со старта)
+    await cdp.eval(`(() => {
+      localStorage.setItem('mm_player_id', 'mob_qa_' + Date.now());
+      localStorage.removeItem('mm_auth_token');
+      window.location.reload();
+    })()`);
+    await sleep(900);
+
+    await cdp.eval(`(() => {
+      const raskladBtn = Array.from(document.querySelectorAll('[role="button"], button')).find(b =>
+        (b.textContent || '').includes('Расклад')
+      );
+      if (raskladBtn) raskladBtn.click();
+    })()`);
+    await sleep(250);
+    await cdp.eval(`(() => {
+      const createBtn = Array.from(document.querySelectorAll('button')).find(b =>
+        (b.textContent || '').includes('СОЗДАТЬ КОМНАТУ')
+      );
+      if (createBtn) createBtn.click();
+    })()`);
+    await sleep(500);
+    for (let b = 0; b < 2; b++) {
+      await cdp.eval(`(() => {
+        const botBtn = Array.from(document.querySelectorAll('button')).find(el =>
+          (el.textContent || '').includes('Добавить мем-бота')
+        );
+        if (botBtn) botBtn.click();
+      })()`);
+      await sleep(300);
+    }
+    await cdp.eval(`(() => {
+      const startBtn = Array.from(document.querySelectorAll('button')).find(el =>
+        (el.textContent || '').includes('ЗАПУСТИТЬ КАТКУ')
+      );
+      if (startBtn) startBtn.click();
+    })()`);
+    await sleep(900);
+
+    // Ждём своего хода (если первыми сходили боты)
+    for (let waitStep = 0; waitStep < 20; waitStep++) {
+      const isMyMobileTurn = await cdp.eval(`(() =>
+        Array.from(document.querySelectorAll('button')).some(b =>
+          !b.disabled && /БРОСИТЬ КУБИКИ/i.test(b.textContent || '')
+        )
+      )()`);
+      if (isMyMobileTurn) break;
+      await sleep(700);
+    }
+
+    // Находим свою клетку PROPERTY (с доступной кнопкой + Филиал ★) на компактном экране 360x640
+    let ownedPropId: number | null = null;
+    const candidatePropertyIds = [1, 3, 6, 8, 9, 11, 13, 14, 16, 18, 19, 21, 23, 24, 26, 27, 29, 31, 32, 34, 37, 39];
+    for (const cid of candidatePropertyIds) {
+      await cdp.eval(`(() => {
+        const el = document.querySelector('[data-cell-id="${cid}"]');
+        if (el) el.click();
+      })()`);
+      await sleep(220);
+      const hasBuildBtn = await cdp.eval(`(() => {
+        const btn = document.querySelector('[data-testid="prop-build-btn"]');
+        return Boolean(btn && !btn.disabled);
+      })()`);
+      if (hasBuildBtn) {
+        ownedPropId = cid;
+        break;
+      }
+      await cdp.eval(`(() => {
+        const closeBtn = document.querySelector('[role="dialog"] button[aria-label="Закрыть карточку"]');
+        if (closeBtn) closeBtn.click();
+      })()`);
+      await sleep(120);
+    }
+    if (ownedPropId === null) {
+      throw new Error('Could not find an owned buildable property on mobile Rasklad turn');
+    }
+
+    // Проверяем на 360x640 и 390x844, что кнопки + Филиал ★ и 🔒 Заложить не смещены, внутри вьюпорта и не перекрыты доком!
+    for (const mvp of [
+      { width: 360, height: 640 },
+      { width: 390, height: 844 },
+    ]) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: mvp.width,
+        height: mvp.height,
+        deviceScaleFactor: 2,
+        mobile: true,
+      });
+      await sleep(250);
+      const hitCheck = await cdp.eval(`(() => {
+        const dlg = document.querySelector('[role="dialog"]');
+        const buildBtn = document.querySelector('[data-testid="prop-build-btn"]');
+        const mortBtn = document.querySelector('[data-testid="prop-mortgage-btn"]');
+        if (!dlg || !buildBtn || !mortBtn) return { ok: false, reason: 'missing elements' };
+        const dr = dlg.getBoundingClientRect();
+        const br = buildBtn.getBoundingClientRect();
+        const mr = mortBtn.getBoundingClientRect();
+        const hitBuild = document.elementFromPoint(br.left + br.width / 2, br.top + br.height / 2);
+        const hitMort = document.elementFromPoint(mr.left + mr.width / 2, mr.top + mr.height / 2);
+        return {
+          ok:
+            dr.top >= 0 &&
+            dr.bottom <= window.innerHeight &&
+            dr.left >= 0 &&
+            dr.right <= window.innerWidth &&
+            br.bottom <= window.innerHeight &&
+            mr.bottom <= window.innerHeight &&
+            buildBtn.contains(hitBuild) &&
+            mortBtn.contains(hitMort),
+          dlgRect: { left: Math.round(dr.left), top: Math.round(dr.top), right: Math.round(dr.right), bottom: Math.round(dr.bottom) },
+          buildRect: { top: Math.round(br.top), bottom: Math.round(br.bottom), h: Math.round(br.height) },
+          mortRect: { top: Math.round(mr.top), bottom: Math.round(mr.bottom), h: Math.round(mr.height) },
+          vh: window.innerHeight,
+          vw: window.innerWidth,
+        };
+      })()`);
+      console.log(`[QA] Mobile ${mvp.width}x${mvp.height} build/mortgage hit-test:`, JSON.stringify(hitCheck));
+      if (!hitCheck.ok) {
+        throw new Error(`Mobile ${mvp.width}x${mvp.height} build/mortgage window shifted or occluded: ${JSON.stringify(hitCheck)}`);
+      }
+    }
+
+    // Строим филиал на мобильном экране 390x844 -> проверяем звезду ★ и появление кнопки - Филиал
+    await cdp.eval(`(() => {
+      const btn = document.querySelector('[data-testid="prop-build-btn"]');
+      if (btn) btn.click();
+    })()`);
+    await sleep(300);
+    const shotMobileOwned = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 88 });
+    fs.writeFileSync(path.join(shotDir, '05c_mobile_owned_monopoly_390x844.jpg'), Buffer.from(shotMobileOwned.data, 'base64'));
+
+    const afterBuildMobile = await cdp.eval(`(() => {
+      const sellBtn = document.querySelector('[data-testid="prop-sell-branch-btn"]');
+      const cellEl = document.querySelector('[data-cell-id="${ownedPropId}"]');
+      return {
+        dialogStillOpen: !!document.querySelector('[role="dialog"]'),
+        hasSellBtn: Boolean(sellBtn && !sellBtn.disabled),
+        hasStarOnBoard: Boolean(cellEl && (cellEl.textContent || '').includes('★')),
+      };
+    })()`);
+    console.log('[QA] Mobile build branch result:', JSON.stringify(afterBuildMobile));
+    if (!afterBuildMobile.dialogStillOpen || !afterBuildMobile.hasSellBtn || !afterBuildMobile.hasStarOnBoard) {
+      throw new Error(`Mobile build branch failed: ${JSON.stringify(afterBuildMobile)}`);
+    }
+
+    // Продаём филиал -> закладываем поле -> выкупаем поле прямо с мобильного экрана!
+    await cdp.eval(`(() => {
+      const sellBtn = document.querySelector('[data-testid="prop-sell-branch-btn"]');
+      if (sellBtn) sellBtn.click();
+    })()`);
+    await sleep(280);
+    await cdp.eval(`(() => {
+      const mortBtn = document.querySelector('[data-testid="prop-mortgage-btn"]');
+      if (mortBtn) mortBtn.click();
+    })()`);
+    await sleep(300);
+    const afterMortgageMobile = await cdp.eval(`(() => {
+      const unmortBtn = document.querySelector('[data-testid="prop-unmortgage-btn"]');
+      const cellEl = document.querySelector('[data-cell-id="${ownedPropId}"]');
+      return {
+        hasUnmortgageBtn: Boolean(unmortBtn && !unmortBtn.disabled),
+        hasLockOnBoard: Boolean(cellEl && (cellEl.textContent || '').includes('🔒')),
+      };
+    })()`);
+    console.log('[QA] Mobile mortgage result:', JSON.stringify(afterMortgageMobile));
+    if (!afterMortgageMobile.hasUnmortgageBtn || !afterMortgageMobile.hasLockOnBoard) {
+      throw new Error(`Mobile mortgage failed: ${JSON.stringify(afterMortgageMobile)}`);
+    }
+
+    await cdp.eval(`(() => {
+      const unmortBtn = document.querySelector('[data-testid="prop-unmortgage-btn"]');
+      if (unmortBtn) unmortBtn.click();
+    })()`);
+    await sleep(280);
+    const afterUnmortgageMobile = await cdp.eval(`(() => {
+      const buildBtn = document.querySelector('[data-testid="prop-build-btn"]');
+      return { backToBuildable: Boolean(buildBtn && !buildBtn.disabled) };
+    })()`);
+    console.log('[QA] Mobile unmortgage result:', JSON.stringify(afterUnmortgageMobile));
+    if (!afterUnmortgageMobile.backToBuildable) {
+      throw new Error(`Mobile unmortgage failed: ${JSON.stringify(afterUnmortgageMobile)}`);
     }
 
     if (cdp.consoleErrors.length > 0 || cdp.pageErrors.length > 0) {
