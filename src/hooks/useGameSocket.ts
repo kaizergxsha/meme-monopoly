@@ -113,12 +113,16 @@ export function useGameSocket() {
           diceSkin: nextProfile.diceSkin,
         });
       } else {
+        const targetCode = curRoom.code;
+        const targetPwd = curRoom.settings.password;
         socketRef.current?.emit('room:leave');
-        socketRef.current?.emit('room:join', {
-          code: curRoom.code,
-          password: curRoom.settings.password,
-          ...nextProfile,
-        });
+        setTimeout(() => {
+          socketRef.current?.emit('room:join', {
+            code: targetCode,
+            password: targetPwd,
+            ...nextProfile,
+          });
+        }, 90);
       }
     }
   };
@@ -393,17 +397,19 @@ export function useGameSocket() {
 
   const registerAccount = async (
     email: string,
-    password: string
+    password: string,
+    nicknameOverride?: string
   ): Promise<{ ok: boolean; error?: string }> => {
     try {
       const cur = profileRef.current;
+      const desiredNick = (nicknameOverride ?? cur.name).trim().slice(0, 24) || cur.name;
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
+          email: email.trim(),
           password,
-          nickname: cur.name,
+          nickname: desiredNick,
           avatar: cur.avatar,
           color: cur.color,
           diceSkin: cur.diceSkin,
@@ -432,11 +438,17 @@ export function useGameSocket() {
     email: string,
     password: string
   ): Promise<{ ok: boolean; error?: string }> => {
+    if (roomStateRef.current?.status === 'PLAYING') {
+      return {
+        ok: false,
+        error: 'Завершите активную партию перед входом в другой аккаунт',
+      };
+    }
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
       const json = (await res.json()) as {
         ok?: boolean;
@@ -457,6 +469,7 @@ export function useGameSocket() {
   };
 
   const logoutAccount = async (): Promise<void> => {
+    if (roomStateRef.current?.status === 'PLAYING') return;
     const token = authTokenRef.current;
     if (token) {
       fetch('/api/auth/logout', {
@@ -469,11 +482,26 @@ export function useGameSocket() {
     setAuthAccount(null);
     const freshGuestId = generateGuestPlayerId();
     localStorage.setItem('mm_player_id', freshGuestId);
-    setProfile((prev) => {
-      const next = { ...prev, playerId: freshGuestId };
-      profileRef.current = next;
-      return next;
-    });
+    const nextGuestProfile: LocalProfile = {
+      ...profileRef.current,
+      playerId: freshGuestId,
+    };
+    profileRef.current = nextGuestProfile;
+    setProfile(nextGuestProfile);
+
+    const curRoom = roomStateRef.current;
+    if (curRoom && curRoom.status === 'LOBBY') {
+      const targetCode = curRoom.code;
+      const targetPwd = curRoom.settings.password;
+      socketRef.current?.emit('room:leave');
+      setTimeout(() => {
+        socketRef.current?.emit('room:join', {
+          code: targetCode,
+          password: targetPwd,
+          ...nextGuestProfile,
+        });
+      }, 90);
+    }
   };
 
   const toggleClientCensor = () => {
