@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BOARD_CELLS } from '../shared/boardData.ts';
 import { TAUNT_COOLDOWN_MS, TAUNTS } from '../shared/memeContent.ts';
 import { formatMoney, getTokenWalkDurationMs, txt } from '../shared/rules.ts';
@@ -12,6 +12,7 @@ import { BankruptcyOverlay } from './components/BankruptcyOverlay.tsx';
 import { PlayerAvatar } from './components/PlayerAvatar.tsx';
 import { ProfileModal } from './components/ProfileModal.tsx';
 import { AvatarCreatorModal } from './components/AvatarCreatorModal.tsx';
+import { AppleEmoji } from './components/AppleEmoji.tsx';
 
 export const App: React.FC = () => {
   const {
@@ -55,6 +56,16 @@ export const App: React.FC = () => {
     const id = setInterval(() => setNowMs(Date.now()), 200);
     return () => clearInterval(id);
   }, []);
+
+  // Синхронизируем открытый профиль со своим новым ID при регистрации, входе или выходе из аккаунта
+  const prevMyIdRef = useRef(profile.playerId);
+  useEffect(() => {
+    if (prevMyIdRef.current !== profile.playerId) {
+      const prevId = prevMyIdRef.current;
+      prevMyIdRef.current = profile.playerId;
+      setProfileModalPlayerId((cur) => (cur === prevId ? profile.playerId : cur));
+    }
+  }, [profile.playerId]);
 
   const openTradeWith = (targetId?: string) => {
     if (!roomState) return;
@@ -309,6 +320,7 @@ export const App: React.FC = () => {
               const isWalkingAfterRoll =
                 isWalkingToChance ||
                 (!!roomState.lastDice &&
+                  roomState.phase !== 'CHOOSE_SPEED_TARGET' &&
                   nowMs - roomState.lastDice.timestamp < walkMs &&
                   (roomState.phase !== 'PRE_ROLL' ||
                     roomState.lastDice.rolledBy === profile.playerId));
@@ -395,7 +407,9 @@ export const App: React.FC = () => {
                             onClick={actions.rollDice}
                             className="btn-emerald-3d active:translate-y-1 flex-1 py-2.5 rounded-xl font-display font-extrabold text-xs tracking-wider uppercase cursor-pointer"
                           >
-                            🎲 БРОСИТЬ КУБИКИ
+                            {(curPlayer.reverseTurns ?? 0) > 0
+                              ? '⏪ БРОСИТЬ ЗАДОМ'
+                              : '🎲 БРОСИТЬ КУБИКИ'}
                           </button>
                           {me?.inJail && me.cash >= 500 && (
                             <button
@@ -583,7 +597,7 @@ export const App: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="grid grid-cols-4 gap-1 min-w-0">
+                      <div className="grid grid-cols-3 gap-1 min-w-0 max-h-[86px] overflow-y-auto chat-scrollbar pr-0.5">
                         {TAUNTS.map((pad) => (
                           <button
                             key={pad.id}
@@ -601,8 +615,9 @@ export const App: React.FC = () => {
                               }}
                               className="pointer-events-none absolute left-0 inset-y-1 w-[2.5px] rounded-r-full"
                             />
-                            <span className="min-w-0 whitespace-normal break-words text-center">
-                              {pad.emoji} {pad.label}
+                            <span className="min-w-0 whitespace-normal break-words text-center inline-flex items-center justify-center gap-1">
+                              <AppleEmoji emoji={pad.emoji} />
+                              <span>{pad.label}</span>
                             </span>
                           </button>
                         ))}
@@ -658,6 +673,7 @@ export const App: React.FC = () => {
         targetPlayerId={profileModalPlayerId}
         myProfile={profile}
         authAccount={authAccount}
+        isPlayingMatch={roomState?.status === 'PLAYING'}
         onClose={() => setProfileModalPlayerId(null)}
         onSelectPlayerId={(pid) => setProfileModalPlayerId(pid)}
         onOpenAvatarCreator={() => setAvatarCreatorOpen(true)}
