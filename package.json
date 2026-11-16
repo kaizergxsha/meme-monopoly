@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Онлайн-игра «Мемная Монополия» (Zero Donate, Authoritative Server, M1 Modes)",
+  "description": "Онлайн-игра «Мемная Монополия» (Zero Donate, Authoritative Server)",
   "scripts": {
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "vite",
