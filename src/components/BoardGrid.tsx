@@ -450,19 +450,19 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
   return (
     <div
-      className="board-outer-box flex-1 lg:flex-none w-full lg:w-auto h-full lg:h-auto flex items-center justify-center p-[4px] sm:p-[6px] lg:px-[54px] xl:px-[58px] lg:py-[26px] overflow-hidden lg:overflow-visible relative"
+      className="board-outer-box flex-1 lg:flex-none w-full lg:w-auto h-full lg:h-auto flex items-center justify-center p-[2px] sm:p-[6px] lg:px-[54px] xl:px-[58px] lg:py-[26px] overflow-hidden lg:overflow-visible relative"
     >
       {/* Обёртка квадратной доски 11×11 — адаптивная под телефоны и десктопы с местом под внешние плашки цен */}
       <div
         ref={boardWrapRef}
         className="board-square-wrap relative shrink-0"
       >
-        {/* Круглая кнопка выхода справа сверху у угла Тюрьмы */}
+        {/* Круглая кнопка выхода справа сверху у угла Тюрьмы (на мобильных перенесена в верхний бар) */}
         <button
           data-testid="board-leave-btn"
           onClick={onLeaveRoom}
           title="Покинуть комнату"
-          className="absolute -top-[18px] -right-[18px] sm:-top-[24px] sm:-right-[24px] w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#12151F]/95 backdrop-blur-md border border-white/15 hover:border-[#F43F5E] hover:bg-[#F43F5E] text-neutral-300 hover:text-white text-[10px] sm:text-xs font-bold flex items-center justify-center shadow-[0_6px_18px_rgba(0,0,0,0.75)] transition cursor-pointer z-40"
+          className="hidden lg:flex absolute -top-[24px] -right-[24px] w-7 h-7 rounded-full bg-[#12151F]/95 backdrop-blur-md border border-white/15 hover:border-[#F43F5E] hover:bg-[#F43F5E] text-neutral-300 hover:text-white text-xs font-bold items-center justify-center shadow-[0_6px_18px_rgba(0,0,0,0.75)] transition cursor-pointer z-40"
         >
           ✕
         </button>
@@ -524,11 +524,15 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
             // Внешняя цветная плашка: цена если поле свободно, стоимость наступления (рента) если куплено
             let outerTabText = '';
+            let outerTabMobileText = '';
             if (buyable && group) {
               if (!owner) {
-                outerTabText = `$${def.price ?? 0}`;
+                const pr = def.price ?? 0;
+                outerTabText = `$${pr}`;
+                outerTabMobileText = outerTabText;
               } else if (rt?.isMortgaged) {
                 outerTabText = rt.mortgageRoundsLeft ? `🔒${rt.mortgageRoundsLeft}` : '🔒';
+                outerTabMobileText = outerTabText;
               } else if (def.type === 'IT_UTILITY') {
                 const bothOwned =
                   roomState.cells[12]?.ownerId === owner.id &&
@@ -536,8 +540,14 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                   !roomState.cells[12]?.isMortgaged &&
                   !roomState.cells[28]?.isMortgaged;
                 outerTabText = bothOwned ? '×250' : '×100';
+                outerTabMobileText = outerTabText;
               } else {
-                outerTabText = `$${calculateDisplayRent(roomState.cells, def.id)}`;
+                const rentVal = calculateDisplayRent(roomState.cells, def.id);
+                outerTabText = `$${rentVal}`;
+                outerTabMobileText =
+                  rentVal >= 10000
+                    ? `$${Number((rentVal / 1000).toFixed(1))}k`
+                    : outerTabText;
               }
             }
 
@@ -793,13 +803,20 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                           : `0 0 14px ${ledColor}55, 0 3px 8px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.42)`,
                         textShadow: '0 1px 2px rgba(0,0,0,0.92), 0 0 2px rgba(0,0,0,0.95)',
                       }}
-                      className={`pointer-events-none absolute ${outerTabPosClass} flex items-center justify-center gap-0.5 font-mono-num text-[7.5px] sm:text-[10.5px] xl:text-[11.5px] font-bold text-[#F8FAFC] tracking-tight leading-none whitespace-nowrap animate-tab-flip ${
+                      className={`pointer-events-none absolute ${outerTabPosClass} flex items-center justify-center gap-0.5 font-mono-num text-[7px] sm:text-[10.5px] xl:text-[11.5px] font-bold text-[#F8FAFC] tracking-[-0.04em] sm:tracking-tight leading-none whitespace-nowrap animate-tab-flip ${
                         owner && !rt?.isMortgaged
                           ? 'border border-white/65 ring-1 ring-black/40'
                           : 'border border-white/25 opacity-95'
                       }`}
                     >
-                      <span>{outerTabText}</span>
+                      {outerTabMobileText !== outerTabText ? (
+                        <>
+                          <span className="sm:hidden">{outerTabMobileText}</span>
+                          <span className="hidden sm:inline">{outerTabText}</span>
+                        </>
+                      ) : (
+                        <span>{outerTabText}</span>
+                      )}
                     </div>
                   );
                 })()}
@@ -807,7 +824,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 {/* Звёзды/шевроны филиалов (1..4 яркие ★ или золотая корона-звезда ★ за полную застройку) */}
                 {rt && rt.branches > 0 && (
                   <div
-                    className={`pointer-events-none absolute ${branchPosClass} flex items-center justify-center gap-[1px] px-1 py-[0.5px] rounded-full bg-[#090B10]/90 border border-[#E5B869]/55 shadow-[0_2px_8px_rgba(0,0,0,0.9),0_0_10px_rgba(229,184,105,0.35)] z-30`}
+                    className={`pointer-events-none absolute ${branchPosClass} flex items-center justify-center gap-[0.5px] sm:gap-[1px] px-[3px] sm:px-1 py-[0.5px] rounded-full bg-[#090B10]/90 border border-[#E5B869]/55 shadow-[0_2px_8px_rgba(0,0,0,0.9),0_0_10px_rgba(229,184,105,0.35)] z-30`}
                   >
                     {rt.branches >= 5 ? (
                       <span
@@ -815,7 +832,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                         style={{
                           textShadow: '0 0 8px rgba(243,208,130,0.9), 0 1px 2px rgba(0,0,0,0.95)',
                         }}
-                        className="text-[11px] sm:text-[14px] xl:text-[15.5px] leading-none text-[#F3D082] font-black animate-pop-in"
+                        className="text-[9px] sm:text-[14px] xl:text-[15.5px] leading-none text-[#F3D082] font-black animate-pop-in"
                       >
                         ★
                       </span>
@@ -826,7 +843,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                           style={{
                             textShadow: '0 0 6px rgba(229,184,105,0.65), 0 1px 2px rgba(0,0,0,0.95)',
                           }}
-                          className="text-[8px] sm:text-[10px] xl:text-[11.5px] leading-none text-[#E5B869] font-black animate-pop-in"
+                          className="text-[6.5px] sm:text-[10px] xl:text-[11.5px] leading-none text-[#E5B869] font-black animate-pop-in"
                         >
                           ★
                         </span>
@@ -838,7 +855,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 {/* Бейдж залога прямо на клетке */}
                 {rt?.isMortgaged && (
                   <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
-                    <span className="bg-[#090B10]/90 backdrop-blur-sm border border-[#F43F5E]/45 text-[#FDA4AF] font-mono-num text-[8.5px] font-bold px-1.5 py-0.5 rounded shadow-lg">
+                    <span className="bg-[#090B10]/90 backdrop-blur-sm border border-[#F43F5E]/45 text-[#FDA4AF] font-mono-num text-[7px] sm:text-[8.5px] font-bold px-1 sm:px-1.5 py-0.5 rounded shadow-lg">
                       🔒 {rt.mortgageRoundsLeft ? `${rt.mortgageRoundsLeft}р` : 'ЗАЛОГ'}
                     </span>
                   </div>
@@ -850,7 +867,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     data-testid="trade-cell-give"
                     className="pointer-events-none absolute inset-0 flex items-center justify-center z-20"
                   >
-                    <span className="px-1.5 py-0.5 rounded-md bg-[#F43F5E]/95 text-white text-[8px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
+                    <span className="px-1 sm:px-1.5 py-0.5 rounded-md bg-[#F43F5E]/95 text-white text-[7px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
                       {tradeGiveLabel}
                     </span>
                   </div>
@@ -860,13 +877,13 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     data-testid="trade-cell-receive"
                     className="pointer-events-none absolute inset-0 flex items-center justify-center z-20"
                   >
-                    <span className="px-1.5 py-0.5 rounded-md bg-[#10B981]/95 text-white text-[8px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
+                    <span className="px-1 sm:px-1.5 py-0.5 rounded-md bg-[#10B981]/95 text-white text-[7px] sm:text-[9px] font-black tracking-tight shadow-lg border border-white/80 whitespace-nowrap">
                       {tradeReceiveLabel}
                     </span>
                   </div>
                 )}
 
-                {/* Внутренняя иллюстрация в тёмном медальоне и контрастная подпись карточки */}
+                {/* Крупная иллюстрация на всю клетку без текстовых подписей под карточками */}
                 {pos.side === 'corner' ? (
                   <div
                     className={`w-full h-full p-0.5 sm:p-1 flex items-center justify-center overflow-hidden ${cornerRadiusClass}`}
@@ -880,14 +897,14 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     />
                   </div>
                 ) : (
-                  /* Единый Dark Luxury слот для всех 36 боковых карточек */
-                  <div className="w-full h-full p-[2px] sm:p-[3px] flex flex-col items-center justify-between gap-[1.5px] overflow-hidden min-w-0 min-h-0">
+                  /* Единый полноразмерный Dark Luxury слот иллюстрации для всех 36 боковых карточек */
+                  <div className="w-full h-full p-[1.5px] sm:p-[2.5px] flex items-center justify-center overflow-hidden min-w-0 min-h-0">
                     <div
                       style={{
                         boxShadow: `inset 0 2px 6px rgba(0,0,0,0.72), 0 1px 0 rgba(255,255,255,0.05)`,
-                        background: `radial-gradient(circle at 50% 50%, color-mix(in srgb, ${medallionGlowHex} 18%, #0c0e15) 0%, #090b10 85%)`,
+                        background: `radial-gradient(circle at 50% 50%, color-mix(in srgb, ${medallionGlowHex} 22%, #0c0e15) 0%, #090b10 86%)`,
                       }}
-                      className="flex-1 min-h-0 min-w-0 w-full rounded-[4px] sm:rounded-[6px] border border-white/[0.06] flex items-center justify-center p-0.5 overflow-hidden"
+                      className="w-full h-full rounded-[3.5px] sm:rounded-[6px] border border-white/[0.07] flex items-center justify-center p-[1px] sm:p-[2px] overflow-hidden"
                     >
                       <div
                         style={{
@@ -899,48 +916,10 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                           cellId={def.id}
                           side={pos.side}
                           censored={censored}
-                          className={
-                            pos.side === 'left' || pos.side === 'right'
-                              ? 'max-w-full max-h-full w-[72%] h-[92%]'
-                              : 'max-w-full max-h-full w-[86%] h-[92%]'
-                          }
+                          className="max-w-full max-h-full w-[94%] h-[94%]"
                         />
                       </div>
                     </div>
-                    {(() => {
-                      const words = displayShortName.split(/\s+/);
-                      const maxWordLen = Math.max(...words.map((w) => w.length));
-                      const nameLen = displayShortName.length;
-                      const isVerticalNarrow = pos.side === 'top' || pos.side === 'bottom';
-                      const labelSizeClass = isVerticalNarrow
-                        ? maxWordLen >= 12
-                          ? 'text-[4.8px] sm:text-[6.4px] xl:text-[7.5px] leading-[1.06] tracking-[-0.03em]'
-                          : nameLen >= 19 || maxWordLen >= 9
-                          ? 'text-[5.2px] sm:text-[7.1px] xl:text-[8.2px] leading-[1.08] tracking-[-0.02em]'
-                          : 'text-[5.7px] sm:text-[7.9px] xl:text-[9.1px] leading-[1.08] tracking-[-0.015em]'
-                        : nameLen >= 20
-                        ? 'text-[5.4px] sm:text-[7.5px] xl:text-[8.7px] leading-[1.06] tracking-[-0.015em]'
-                        : 'text-[5.8px] sm:text-[8.1px] xl:text-[9.4px] leading-[1.08] tracking-[-0.01em]';
-
-                      return (
-                        <div className="shrink-0 w-full rounded-[3px] bg-[#080A0F]/88 border-t border-white/[0.07] py-[1px] sm:py-[1.5px] px-[1.5px] flex items-center justify-center">
-                          <span
-                            style={{ textShadow: '0 1px 2px rgba(0,0,0,0.95)' }}
-                            className={`w-full text-center font-semibold whitespace-normal break-words ${labelSizeClass} ${
-                              isDangerSector
-                                ? 'text-[#FDA4AF]'
-                                : isChanceSector
-                                ? 'text-[#A7F3D0]'
-                                : isPortalSector
-                                ? 'text-[#E9D5FF]'
-                                : 'text-[#F1F5F9]'
-                            }`}
-                          >
-                            {displayShortName}
-                          </span>
-                        </div>
-                      );
-                    })()}
                   </div>
                 )}
               </div>
@@ -1086,7 +1065,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             return (
               <>
                 <div
-                  className="fixed inset-0 z-30 max-sm:bg-black/60 max-sm:backdrop-blur-[2px]"
+                  className="fixed inset-0 z-30 max-lg:bg-black/60 max-lg:backdrop-blur-[2px]"
                   onClick={() => onSelectCell(null)}
                   aria-hidden="true"
                 />
@@ -1110,7 +1089,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                         : 'hidden',
                     boxShadow: `0 32px 80px rgba(0,0,0,0.92), 0 0 34px ${headerHex}24, inset 0 1px 0 rgba(255,255,255,0.1)`,
                   }}
-                  className="absolute w-[308px] max-sm:!fixed max-sm:!left-1/2 max-sm:!top-1/2 max-sm:!-translate-x-1/2 max-sm:!-translate-y-1/2 max-sm:w-[min(92vw,336px)] max-sm:max-h-[84dvh] max-sm:overflow-y-auto bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.08] overflow-hidden z-40 max-sm:z-50 animate-action-card"
+                  className="absolute w-[308px] max-lg:!fixed max-lg:!left-1/2 max-lg:!top-1/2 max-lg:!-translate-x-1/2 max-lg:!-translate-y-1/2 max-lg:w-[min(92vw,340px)] max-lg:max-h-[84dvh] max-lg:overflow-y-auto bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.08] overflow-hidden z-40 max-lg:z-50 animate-action-card"
                 >
                   {/* Коллекционная VIP-шапка карточки с глубоким градиентом монополии, сеткой и крупным 3D-артом */}
                   <div

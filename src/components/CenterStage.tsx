@@ -388,10 +388,6 @@ export const CenterStage: React.FC<CenterStageProps> = ({
   const speedUnlock = getSpeedDieUnlockRound(roomState.settings);
   const clockStr = formatClock(roomState.startedAt, nowMs);
 
-  // Крупные кубики всплывают по центру на 2.6 сек при каждом броске (1:1 референс)
-  const showCenterDice =
-    !!roomState.lastDice && nowMs - roomState.lastDice.timestamp < 2600;
-
   // Данные конструктора Договора
   const otherAlivePlayers = roomState.players.filter(
     (p) => !p.isBankrupt && p.id !== myPlayerId
@@ -477,6 +473,19 @@ export const CenterStage: React.FC<CenterStageProps> = ({
       roomState.phase === 'CHOOSE_SPEED_TARGET' ||
       roomState.phase === 'PENDING_DEBT');
 
+  const isBlockingCenterCardOpen =
+    Boolean(roomState.activeKickVote) ||
+    (!tradeDraft.open && Boolean(roomState.activeTrade)) ||
+    Boolean(tradeDraft.open && me) ||
+    showAuctionCard ||
+    (showMyTurnActionCard && roomState.phase !== 'PRE_ROLL');
+
+  // Крупные кубики всплывают по центру во время шагов фишки и скрываются сразу при открытии карточки выбора, чтобы не перекрывать кнопки
+  const showCenterDice =
+    !!roomState.lastDice &&
+    !isBlockingCenterCardOpen &&
+    (isWalkingAfterRoll || nowMs - roomState.lastDice.timestamp < 1750);
+
   return (
     <div
       style={{ gridRow: '2 / span 9', gridColumn: '2 / span 9' }}
@@ -489,7 +498,11 @@ export const CenterStage: React.FC<CenterStageProps> = ({
       />
 
       {/* 1. ВЕРХНЯЯ ЗОНА: Плашка голосования за кик + Оникс-карточка активного действия / Смарт-контракта ИЛИ компактная пилюля времени */}
-      <div className="relative z-20 shrink-0 max-h-[75%] overflow-y-auto chat-scrollbar space-y-1.5">
+      <div
+        className={`relative z-20 shrink-0 ${
+          isBlockingCenterCardOpen ? 'max-lg:max-h-full max-lg:flex-1 lg:max-h-[75%]' : 'max-h-[75%]'
+        } overflow-y-auto chat-scrollbar space-y-1.5`}
+      >
         {roomState.activeKickVote && (() => {
           const kv = roomState.activeKickVote!;
           const target = roomState.players.find((p) => p.id === kv.targetId);
@@ -1261,7 +1274,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
             )}
 
             {roomState.phase === 'PRE_ROLL' && (
-              <div className="space-y-1.5">
+              <div className="hidden lg:block space-y-1.5">
                 <button
                   onClick={onRoll}
                   className="btn-emerald-3d active:translate-y-1 w-full py-2 sm:py-2.5 px-4 rounded-xl font-display font-extrabold text-[11px] sm:text-xs md:text-[13.5px] tracking-wider uppercase flex items-center justify-center gap-2 cursor-pointer"
@@ -1300,10 +1313,10 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                   cellType={BOARD_CELLS[curPlayer.position].type}
                   cellId={curPlayer.position}
                   censored={censored}
-                  className="!h-[48px] sm:!h-[86px]"
+                  className="!h-[64px] sm:!h-[86px]"
                 />
                 <div className="space-y-1">
-                  <div className="text-[10.5px] sm:text-xs text-neutral-300 leading-snug">
+                  <div className="text-[11px] sm:text-xs text-neutral-300 leading-snug">
                     Вы попали на{' '}
                     <b className="text-[#F8FAFC] font-bold">
                       «
@@ -1318,7 +1331,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                       {' '}— выкуп актива в портфель или открытые торги.
                     </span>
                   </div>
-                  <div className="hidden sm:block relative overflow-hidden rounded-lg bg-[#0A0C12]/85 border border-white/[0.06] border-l-2 border-l-[#E5B869] px-3 py-1.5 text-[10.5px] text-neutral-300 italic leading-snug">
+                  <div className="relative overflow-hidden rounded-lg bg-[#0A0C12]/85 border border-white/[0.06] border-l-2 border-l-[#E5B869] px-2.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-[10.5px] text-neutral-300 italic leading-snug">
                     «
                     {txt(
                       BOARD_CELLS[curPlayer.position].description ||
@@ -1330,7 +1343,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                     »
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                <div className="hidden lg:grid grid-cols-2 gap-1.5 sm:gap-2">
                   <button
                     disabled={(me?.cash ?? 0) < (BOARD_CELLS[curPlayer.position].price ?? 0)}
                     onClick={onBuy}
@@ -1395,7 +1408,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                 <button
                   type="button"
                   onClick={() => (onAckChance ?? emitAckChance)()}
-                  className="btn-emerald-3d active:translate-y-1 w-full py-2 sm:py-2.5 rounded-xl font-display font-bold text-xs sm:text-sm cursor-pointer"
+                  className="hidden lg:block btn-emerald-3d active:translate-y-1 w-full py-2 sm:py-2.5 rounded-xl font-display font-bold text-xs sm:text-sm cursor-pointer"
                 >
                   Применить Шанс 🃏
                 </button>
@@ -1456,12 +1469,12 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                   {canPay ? (
                     <button
                       onClick={onPayDebt}
-                      className="btn-emerald-3d active:translate-y-1 w-full py-2.5 rounded-xl font-display font-bold text-xs md:text-sm cursor-pointer"
+                      className="hidden lg:block btn-emerald-3d active:translate-y-1 w-full py-2.5 rounded-xl font-display font-bold text-xs md:text-sm cursor-pointer"
                     >
                       💸 Оплатить <span className="font-mono-num">{formatMoney(debt.amount)}</span>
                     </button>
                   ) : (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="hidden lg:grid grid-cols-2 gap-2">
                       <button
                         onClick={onOpenCredit}
                         className="btn-gold-3d py-2 rounded-xl font-display font-extrabold text-xs cursor-pointer"
@@ -1486,7 +1499,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                   🌀 {txt('Ебаный квантовый телепорт', 'Квантовый телепорт', censored)}: выберите клетку назначения на доске или ниже (+точка ={' '}
                   <span className="font-mono-num">+{formatMoney(500)}</span>):
                 </div>
-                <div className="flex flex-wrap gap-1 sm:gap-1.5 max-h-24 sm:max-h-28 overflow-y-auto chat-scrollbar pr-1">
+                <div className="hidden lg:flex flex-wrap gap-1 sm:gap-1.5 max-h-24 sm:max-h-28 overflow-y-auto chat-scrollbar pr-1">
                   {roomState.portal.candidateCells.map((cid) => {
                     const cDef = BOARD_CELLS[cid];
                     const cRt = roomState.cells[cid];
@@ -1516,7 +1529,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                     );
                   })}
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                <div className="hidden lg:grid grid-cols-2 gap-1.5 sm:gap-2">
                   <button
                     type="button"
                     disabled={roomState.portal.candidateCells.length >= 8 || (me?.cash ?? 0) < 500}
@@ -1702,7 +1715,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                     cellType={def.type}
                     cellId={def.id}
                     censored={censored}
-                    className="!h-[36px] sm:!h-[64px]"
+                    className="!h-[54px] sm:!h-[64px]"
                   />
                   <div className="hidden sm:block rounded-lg bg-[#0A0C12]/85 border border-white/[0.06] border-l-2 border-l-[#E5B869] px-2.5 py-1.5 text-[10.5px] text-neutral-300 italic whitespace-normal break-words leading-snug">
                     «{txt(def.description || def.subtitle, def.cleanDescription || def.cleanSubtitle, censored)}»
@@ -1777,7 +1790,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         🎯 Ваша очередь на торгах! (от{' '}
                         <span className="font-mono-num">{formatMoney(nextMinBid)}</span>)
                       </div>
-                      <div className="grid grid-cols-4 gap-1 sm:gap-1.5">
+                      <div className="hidden lg:grid grid-cols-4 gap-1 sm:gap-1.5">
                         {[100, 300, 500].map((step) => (
                           <button
                             key={step}
@@ -1927,7 +1940,11 @@ export const CenterStage: React.FC<CenterStageProps> = ({
       )}
 
       {/* 3. НИЖНЯЯ ЗОНА 9×9: СТРУКТУРИРОВАННЫЙ ЛОГ ТЕРМИНАЛА И ЧАТ */}
-      <div className="flex-1 min-h-0 flex flex-col justify-end pt-1 sm:pt-2 z-10">
+      <div
+        className={`flex-1 min-h-0 ${
+          isBlockingCenterCardOpen ? 'hidden lg:flex' : 'flex'
+        } flex-col justify-end pt-1 sm:pt-2 z-10`}
+      >
         {/* Компактные фильтры лога */}
         <div className="flex items-center justify-between gap-2 mb-1 border-b border-white/[0.05] pb-1">
           <span className="hidden sm:inline-flex items-center gap-1.5 text-[9.5px] uppercase tracking-[0.14em] text-neutral-500 font-bold">

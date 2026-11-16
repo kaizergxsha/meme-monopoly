@@ -26,13 +26,13 @@ function getTokenBoardCoords(
   // Клетка 10 (Тюрьма / Экскурсия): диагональное разделение как в Monopoly One
   if (cellId === 10) {
     const base = inJail
-      ? { x: 90.3, y: 9.7 } // Нижний-левый треугольник с наручниками («На бутылке»)
-      : { x: 96.1, y: 3.9 }; // Верхний-правый треугольник с пончиком («Экскурсия»)
+      ? { x: 90.0, y: 10.0 } // Нижний-левый треугольник с наручниками («На бутылке»)
+      : { x: 96.2, y: 3.8 }; // Верхний-правый треугольник с пончиком («Экскурсия»)
     if (slotTotal <= 1) return base;
-    const angle = (slotIdx / slotTotal) * Math.PI * 2;
+    const angle = (slotIdx / slotTotal) * Math.PI * 2 - Math.PI / 4;
     return {
-      x: base.x + Math.cos(angle) * 1.45,
-      y: base.y + Math.sin(angle) * 1.45,
+      x: base.x + Math.cos(angle) * 1.85,
+      y: base.y + Math.sin(angle) * 1.85,
     };
   }
 
@@ -40,31 +40,54 @@ function getTokenBoardCoords(
   const cx = trackCenterPct(pos.col);
   const cy = trackCenterPct(pos.row);
 
-  if (slotTotal <= 1) return { x: cx, y: cy };
+  if (slotTotal <= 1) {
+    // На боковых клетках слегка смещаем одиночную фишку к внутреннему краю (к центру поля),
+    // чтобы крупная иллюстрация карточки оставалась отлично видна даже под фишкой
+    if (pos.side === 'top') return { x: cx, y: cy + 1.65 };
+    if (pos.side === 'bottom') return { x: cx, y: cy - 1.65 };
+    if (pos.side === 'left') return { x: cx + 1.65, y: cy };
+    if (pos.side === 'right') return { x: cx - 1.65, y: cy };
+    return { x: cx, y: cy };
+  }
 
-  // Разносим несколько фишек на одной клетке так, чтобы каждую было чётко видно
+  // Разносим несколько фишек по всей площади клетки без наложения друг на друга (особенно на телефонах)
   const offsets: Array<[number, number]> =
     pos.side === 'top' || pos.side === 'bottom'
-      ? [
-          [-1.1, -1.6],
-          [1.1, 1.6],
-          [-1.1, 1.6],
-          [1.1, -1.6],
-          [0, 0],
-        ]
+      ? slotTotal === 2
+        ? [
+            [-1.4, -2.9],
+            [1.4, 2.9],
+          ]
+        : [
+            [-1.65, -3.3],
+            [1.65, -3.3],
+            [-1.65, 3.3],
+            [1.65, 3.3],
+            [0, 0],
+          ]
       : pos.side === 'left' || pos.side === 'right'
+      ? slotTotal === 2
+        ? [
+            [-2.9, -1.4],
+            [2.9, 1.4],
+          ]
+        : [
+            [-3.3, -1.65],
+            [3.3, -1.65],
+            [-3.3, 1.65],
+            [3.3, 1.65],
+            [0, 0],
+          ]
+      : slotTotal === 2
       ? [
-          [-1.6, -1.1],
-          [1.6, 1.1],
-          [-1.6, 1.1],
-          [1.6, -1.1],
-          [0, 0],
+          [-2.8, -2.4],
+          [2.8, 2.4],
         ]
       : [
-          [-2.0, -2.0],
-          [2.0, 2.0],
-          [-2.0, 2.0],
-          [2.0, -2.0],
+          [-3.2, -3.2],
+          [3.2, -3.2],
+          [-3.2, 3.2],
+          [3.2, 3.2],
           [0, 0],
         ];
 
@@ -284,7 +307,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               backgroundColor: `${t.color}66`,
               boxShadow: `0 0 12px ${t.color}aa`,
             }}
-            className="absolute w-5 h-5 rounded-full animate-token-trail pointer-events-none"
+            className="absolute w-3.5 h-3.5 sm:w-5 sm:h-5 rounded-full animate-token-trail pointer-events-none"
           />
         );
       })}
@@ -301,7 +324,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               borderColor: l.color,
               boxShadow: `0 0 18px ${l.color}`,
             }}
-            className="absolute w-10 h-10 rounded-full border-[3px] animate-token-land pointer-events-none"
+            className="absolute w-7 h-7 sm:w-10 sm:h-10 rounded-full border-2 sm:border-[3px] animate-token-land pointer-events-none"
           />
         );
       })}
@@ -312,6 +335,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
         const groupKey = vp === 10 ? `10_${p.inJail ? 'jail' : 'visit'}` : String(vp);
         const sameCell = cellGroups.get(groupKey) || [p];
         const slotIdx = Math.max(0, sameCell.findIndex((x) => x.id === p.id));
+        const isCrowdedCell = sameCell.length >= 2;
         const coords = getTokenBoardCoords(vp, p.inJail && vp === 10, slotIdx, sameCell.length);
 
         const isActive = isPlaying && p.id === currentPlayerId;
@@ -340,26 +364,35 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
                   backgroundColor: `${p.color}55`,
                   border: `2px solid ${p.color}`,
                 }}
-                className="absolute -inset-1.5 rounded-full animate-token-halo pointer-events-none"
+                className="absolute -inset-1 sm:-inset-1.5 rounded-full animate-token-halo pointer-events-none"
               />
             )}
 
-            {/* Диск-фишка в стиле Monopoly One: сочный цвет, контрастный обод, глянцевое ядро и аватар */}
+            {/* Диск-фишка в стиле Monopoly One: компактная на телефоне без перекрытия арта и соседей */}
             <div
               key={mode === 'STEP' ? `hop_${tick}` : 'idle'}
               style={{
                 backgroundColor: p.color,
-                outline: '2.5px solid #09090b',
                 boxShadow: isActive
-                  ? `0 6px 18px rgba(0,0,0,0.85), 0 0 18px ${p.color}, inset 0 2px 3px rgba(255,255,255,0.6)`
-                  : '0 6px 14px rgba(0,0,0,0.82), inset 0 2px 3px rgba(255,255,255,0.45)',
+                  ? `0 5px 14px rgba(0,0,0,0.85), 0 0 14px ${p.color}, inset 0 1.5px 2.5px rgba(255,255,255,0.6)`
+                  : '0 4px 10px rgba(0,0,0,0.82), inset 0 1.5px 2.5px rgba(255,255,255,0.45)',
               }}
-              className={`relative w-[22px] h-[22px] sm:w-[26px] sm:h-[26px] md:w-[31px] md:h-[31px] rounded-full border-2 sm:border-[2.5px] border-white flex items-center justify-center select-none ${
+              className={`relative ${
+                isCrowdedCell
+                  ? 'w-[15px] h-[15px] sm:w-[24px] sm:h-[24px] md:w-[28px] md:h-[28px]'
+                  : 'w-[18px] h-[18px] sm:w-[26px] sm:h-[26px] md:w-[31px] md:h-[31px]'
+              } rounded-full border-[1.5px] sm:border-[2.5px] border-white outline outline-[1.5px] sm:outline-[2.5px] outline-[#09090b] flex items-center justify-center select-none ${
                 mode === 'STEP' ? 'animate-token-hop' : ''
               }`}
             >
               {/* Внутреннее контрастное кольцо M1 */}
-              <span className="w-[15px] h-[15px] sm:w-[18px] sm:h-[18px] md:w-[21px] md:h-[21px] rounded-full bg-black/25 border border-black/30 flex items-center justify-center text-[9px] sm:text-[11px] md:text-[13px] leading-none shadow-inner overflow-hidden">
+              <span
+                className={`${
+                  isCrowdedCell
+                    ? 'w-[10.5px] h-[10.5px] sm:w-[16.5px] sm:h-[16.5px] md:w-[19.5px] md:h-[19.5px] text-[7px] sm:text-[10px] md:text-[12px]'
+                    : 'w-[13px] h-[13px] sm:w-[18px] sm:h-[18px] md:w-[21px] md:h-[21px] text-[8px] sm:text-[11px] md:text-[13px]'
+                } rounded-full bg-black/25 border border-black/30 flex items-center justify-center leading-none shadow-inner overflow-hidden`}
+              >
                 <PlayerAvatar avatar={p.avatar} fill />
               </span>
             </div>
@@ -368,7 +401,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
             {mode && (
               <span
                 style={{ backgroundColor: p.color }}
-                className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[9px] font-black text-white whitespace-nowrap shadow-md border border-white/60"
+                className="hidden sm:inline-block absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[9px] font-black text-white whitespace-nowrap shadow-md border border-white/60"
               >
                 {p.name}
               </span>
