@@ -11,6 +11,14 @@ const PRELOAD_SOUNDS = {
   tauntLaugh: '/sounds/taunt_laugh.mp3',
   tauntCasino: '/sounds/taunt_casino.mp3',
   tauntGay: '/sounds/taunt_gay.mp3',
+  tauntCoalPlant: '/sounds/taunt_coal_plant.mp3',
+  tauntBatyaDoma: '/sounds/taunt_batya_doma.mp3',
+  tauntPodstavili: '/sounds/taunt_podstavili.mp3',
+  tauntNetIdi: '/sounds/taunt_net_idi.mp3',
+  tauntTck: '/sounds/taunt_tck.mp3',
+  tauntZryaPolez: '/sounds/taunt_zrya_polez.mp3',
+  tauntAmAmAm: '/sounds/taunt_am_am_am.mp3',
+  tauntSpasiboHorosho: '/sounds/taunt_spasibo_horosho.mp3',
 } as const;
 
 const TAUNT_SOUND_CONFIG: Record<TauntSoundId, { url: string; phrase: string; pitch: number }> = {
@@ -22,6 +30,14 @@ const TAUNT_SOUND_CONFIG: Record<TauntSoundId, { url: string; phrase: string; pi
   laugh: { url: PRELOAD_SOUNDS.tauntLaugh, phrase: 'Ха-ха-ха!', pitch: 1.5 },
   casino: { url: PRELOAD_SOUNDS.tauntCasino, phrase: 'Казино!', pitch: 1.2 },
   gay: { url: PRELOAD_SOUNDS.tauntGay, phrase: 'Гей!', pitch: 0.8 },
+  coal_plant: { url: PRELOAD_SOUNDS.tauntCoalPlant, phrase: 'Угольный заводик! Покупаю!', pitch: 0.92 },
+  batya_doma: { url: PRELOAD_SOUNDS.tauntBatyaDoma, phrase: 'Батя дома!', pitch: 0.9 },
+  podstavili: { url: PRELOAD_SOUNDS.tauntPodstavili, phrase: 'Подставили меня!', pitch: 1.2 },
+  net_idi: { url: PRELOAD_SOUNDS.tauntNetIdi, phrase: 'Нет, иди!', pitch: 0.85 },
+  tck: { url: PRELOAD_SOUNDS.tauntTck, phrase: 'ТЦК и кнопка вызов!', pitch: 1.0 },
+  zrya_polez: { url: PRELOAD_SOUNDS.tauntZryaPolez, phrase: 'Ох, зря я туда полез!', pitch: 0.8 },
+  am_am_am: { url: PRELOAD_SOUNDS.tauntAmAmAm, phrase: 'Ам-ам-ам!', pitch: 1.1 },
+  spasibo_horosho: { url: PRELOAD_SOUNDS.tauntSpasiboHorosho, phrase: 'Спасибо, хорошо!', pitch: 1.05 },
 };
 
 function readInitialMuted(): boolean {
