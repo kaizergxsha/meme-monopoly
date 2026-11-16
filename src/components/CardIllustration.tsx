@@ -1,5 +1,6 @@
 import React, { useId } from 'react';
 import { CellArtwork } from './CellArtwork.tsx';
+import { AppleEmoji } from './AppleEmoji.tsx';
 
 export interface IndustryCardBannerProps {
   groupId?: string;
@@ -167,7 +168,7 @@ export const IndustryCardBanner: React.FC<IndustryCardBannerProps> = ({
               }}
               className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#0A0C12]/85 backdrop-blur-md border flex items-center justify-center text-xs sm:text-sm"
             >
-              {em}
+              <AppleEmoji emoji={em} />
             </span>
           ))}
         </div>
@@ -304,12 +305,12 @@ const CHANCE_SCENE_META: Record<string, ChanceSceneMeta> = {
     cellId: 21,
   },
   pen_drop_jail: {
-    tag: 'ПРИНЯЛИ ЗА ДРОП-КАРТЫ — В СИЗО!',
-    bg1: '#08152b',
-    bg2: '#112a54',
-    accent: '#60a5fa',
-    props: ['🚓', '💳', '🚨'],
-    cellId: 23,
+    tag: 'БУСИФИКАЦИЯ — ПРЯМИКОМ В УЧЕБКУ!',
+    bg1: '#1c1208',
+    bg2: '#33200e',
+    accent: '#f43f5e',
+    props: ['🚐', '🪖', '📋'],
+    cellId: 30,
   },
   pen_brainrot_coma: {
     tag: 'БРЕЙНРОТ-КОМА НА 14 ЧАСОВ',
@@ -454,6 +455,46 @@ const CHANCE_SCENE_META: Record<string, ChanceSceneMeta> = {
     props: ['🎮', '🏆', '💵'],
     cellId: 27,
   },
+  rev_moonwalk_gear: {
+    tag: 'ЗАДНЯЯ ПЕРЕДАЧА • ХОД НАЗАД ×2',
+    bg1: '#1a0b2e',
+    bg2: '#331459',
+    accent: '#c084fc',
+    props: ['⏪', '🚗', '🕺'],
+    cellId: 5,
+  },
+  rev_gps_spoof: {
+    tag: 'СБОЙ РЭБ • ИНВЕРСИЯ МАРШРУТА ×2',
+    bg1: '#0a192f',
+    bg2: '#13315c',
+    accent: '#38bdf8',
+    props: ['🧭', '⏪', '📡'],
+    cellId: 12,
+  },
+  spec_coat_swap: {
+    tag: 'РОКИРОВКА В ГАРДЕРОБЕ • СВАП МЕСТ',
+    bg1: '#1f1024',
+    bg2: '#421d4d',
+    accent: '#e879f9',
+    props: ['🔀', '🧥', '🔑'],
+    cellId: 8,
+  },
+  spec_casino_promo: {
+    tag: 'ПРОМОКОД ДОДЕП777 • ВРЫВ В КАЗИНО',
+    bg1: '#261705',
+    bg2: '#4d2c08',
+    accent: '#f59e0b',
+    props: ['🎰', '7️⃣', '💎'],
+    cellId: 20,
+  },
+  bon_asset_dividend: {
+    tag: 'ЧЁРНАЯ КАССА • ДИВИДЕНДЫ С ТОЧЕК',
+    bg1: '#042217',
+    bg2: '#09452e',
+    accent: '#34d399',
+    props: ['💼', '📊', '💵'],
+    cellId: 34,
+  },
 };
 
 export const ChanceCardIllustration: React.FC<ChanceCardIllustrationProps> = ({
@@ -578,7 +619,7 @@ export const ChanceCardIllustration: React.FC<ChanceCardIllustrationProps> = ({
               }}
               className="w-8 h-8 rounded-lg bg-white/[0.09] backdrop-blur-md border flex items-center justify-center text-base"
             >
-              {em}
+              <AppleEmoji emoji={em} />
             </span>
           ))}
         </div>
@@ -617,13 +658,13 @@ export const ChanceCardIllustration: React.FC<ChanceCardIllustrationProps> = ({
             style={{ filter: `drop-shadow(0 4px 12px ${scene.accent}88)` }}
             className="relative z-10 text-5xl leading-none"
           >
-            {scene.props[0]}
+            <AppleEmoji emoji={scene.props[0]} />
           </span>
           <span
             style={{ borderColor: `${scene.accent}66` }}
             className="absolute bottom-1 right-1 z-10 w-6 h-6 rounded-lg bg-black/70 border text-xs flex items-center justify-center shadow-md"
           >
-            {scene.props[2]}
+            <AppleEmoji emoji={scene.props[2]} />
           </span>
         </div>
       )}

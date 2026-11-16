@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getCellGridPosition } from '../../shared/boardData.ts';
-import { PlayerState } from '../../shared/types.ts';
+import { DiceRollResult, PlayerState, PoliceArrestEvent } from '../../shared/types.ts';
+import { AppleEmoji } from './AppleEmoji.tsx';
 import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 interface BoardTokensLayerProps {
   players: PlayerState[];
   currentPlayerId?: string;
   isPlaying: boolean;
+  lastDice?: DiceRollResult | null;
+  lastPoliceArrest?: PoliceArrestEvent | null;
 }
 
 const TOTAL_UNITS = 12.3; // 1.65 + 9 * 1.0 + 1.65
@@ -110,10 +113,14 @@ interface StepTrailItem {
   color: string;
 }
 
+type TokenMoveMode = 'STEP' | 'WARP' | 'ARREST_CUFF' | 'ARREST_HAUL' | null;
+
 export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
   players,
   currentPlayerId,
   isPlaying,
+  lastDice,
+  lastPoliceArrest,
 }) => {
   const [visualPos, setVisualPos] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
@@ -121,13 +128,19 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
     return init;
   });
   const [stepTick, setStepTick] = useState<Record<string, number>>({});
-  const [movingMode, setMovingMode] = useState<Record<string, 'STEP' | 'WARP' | null>>({});
+  const [movingMode, setMovingMode] = useState<Record<string, TokenMoveMode>>({});
   const [landings, setLandings] = useState<LandingEffect[]>([]);
   const [stepTrails, setStepTrails] = useState<StepTrailItem[]>([]);
+  const [jailSlam, setJailSlam] = useState<{ id: string; playerName: string } | null>(null);
 
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const auxTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const targetRef = useRef<Record<string, number>>({});
+  const handledArrestIdRef = useRef<string | null>(lastPoliceArrest?.id ?? null);
+  const lastDiceRef = useRef<DiceRollResult | null | undefined>(lastDice);
+  lastDiceRef.current = lastDice;
+  const lastArrestRef = useRef<PoliceArrestEvent | null | undefined>(lastPoliceArrest);
+  lastArrestRef.current = lastPoliceArrest;
   const prevInJailRef = useRef<Record<string, boolean>>(
     Object.fromEntries(players.map((p) => [p.id, p.inJail]))
   );
@@ -136,9 +149,9 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
   const visualRef = useRef<Record<string, number>>(visualPos);
   visualRef.current = visualPos;
 
-  const playersMoveKey = players
+  const playersMoveKey = `${players
     .map((p) => `${p.id}:${p.position}:${p.inJail ? 1 : 0}:${p.isBankrupt ? 1 : 0}`)
-    .join('|');
+    .join('|')}|${lastPoliceArrest?.id ?? ''}`;
 
   useEffect(() => {
     const stepTimers = timersRef.current;
@@ -207,8 +220,109 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
       targetRef.current[p.id] = p.position;
 
       const cwDist = (p.position - curVis + 40) % 40;
+      const ccwDist = (curVis - p.position + 40) % 40;
+      const curDice = lastDiceRef.current;
+      const isReverseRollForPlayer = Boolean(
+        curDice &&
+          curDice.rolledBy === p.id &&
+          curDice.isReverse &&
+          Date.now() - curDice.timestamp < 6000
+      );
+      const curArrest = lastArrestRef.current;
+      const isFreshArrestForPlayer = Boolean(
+        curArrest &&
+          curArrest.playerId === p.id &&
+          p.position === 10 &&
+          p.inJail &&
+          handledArrestIdRef.current !== curArrest.id &&
+          Date.now() - curArrest.timestamp < 7000
+      );
+
+      const triggerArrivalLanding = (cellId: number, inJailFlag: boolean, colorHex: string) => {
+        const lid = `${p.id}_${Date.now()}`;
+        setLandings((ls) => [
+          ...ls.slice(-4),
+          { id: lid, playerId: p.id, cellId, inJail: inJailFlag, color: colorHex },
+        ]);
+        const rmLand = setTimeout(() => {
+          auxTimersRef.current.delete(rmLand);
+          setLandings((ls) => ls.filter((x) => x.id !== lid));
+        }, 750);
+        auxTimersRef.current.add(rmLand);
+      };
+
+      const triggerArrestHaulSequence = (cuffHoldMs: number) => {
+        setMovingMode((m) => ({ ...m, [p.id]: 'ARREST_CUFF' }));
+        timersRef.current[p.id] = setTimeout(() => {
+          setMovingMode((m) => ({ ...m, [p.id]: 'ARREST_HAUL' }));
+          setVisualPos((v) => ({ ...v, [p.id]: 10 }));
+          timersRef.current[p.id] = setTimeout(() => {
+            delete timersRef.current[p.id];
+            setMovingMode((m) => ({ ...m, [p.id]: null }));
+            triggerArrivalLanding(10, true, '#F43F5E');
+            const slamId = `slam_${p.id}_${Date.now()}`;
+            setJailSlam({ id: slamId, playerName: p.name });
+            const rmSlam = setTimeout(() => {
+              auxTimersRef.current.delete(rmSlam);
+              setJailSlam((cur) => (cur?.id === slamId ? null : cur));
+            }, 1500);
+            auxTimersRef.current.add(rmSlam);
+          }, 860);
+        }, cuffHoldMs);
+      };
+
+      if (isFreshArrestForPlayer && curArrest) {
+        handledArrestIdRef.current = curArrest.id;
+        // Если арест произошёл из-за наступания на сектор #30 (Облава), сначала доходим до клетки 30!
+        const cwTo30 = (30 - curVis + 40) % 40;
+        const ccwTo30 = (curVis - 30 + 40) % 40;
+        const stepTo30Delta = isReverseRollForPlayer ? -1 : 1;
+        const distTo30 = isReverseRollForPlayer ? ccwTo30 : cwTo30;
+
+        if (curArrest.reason === 'POLICE_CELL' && curVis !== 30 && distTo30 > 0 && distTo30 <= 18) {
+          setMovingMode((m) => ({ ...m, [p.id]: 'STEP' }));
+          const walkToPolice = (fromCell: number) => {
+            const nextCell = (fromCell + stepTo30Delta + 40) % 40;
+            setVisualPos((v) => ({ ...v, [p.id]: nextCell }));
+            setStepTick((st) => ({ ...st, [p.id]: (st[p.id] ?? 0) + 1 }));
+
+            const tid = `${p.id}_${nextCell}_${Date.now()}_${Math.random()}`;
+            setStepTrails((tr) => [
+              ...tr.slice(-10),
+              { id: tid, cellId: fromCell, inJail: false, color: p.color },
+            ]);
+            const rmTrail = setTimeout(() => {
+              auxTimersRef.current.delete(rmTrail);
+              setStepTrails((tr) => tr.filter((x) => x.id !== tid));
+            }, 420);
+            auxTimersRef.current.add(rmTrail);
+
+            if (nextCell === 30) {
+              triggerArrivalLanding(30, false, '#F43F5E');
+              triggerArrestHaulSequence(700);
+            } else {
+              timersRef.current[p.id] = setTimeout(() => walkToPolice(nextCell), 90);
+            }
+          };
+          timersRef.current[p.id] = setTimeout(() => walkToPolice(curVis), 80);
+          continue;
+        }
+
+        // Для 3 дублей или Шанса: мигалки на текущей клетке игрока, затем автозак в СИЗО #10
+        triggerArrestHaulSequence(620);
+        continue;
+      }
+
+      const useReverseStep =
+        (isReverseRollForPlayer && ccwDist > 0 && ccwDist <= 18) ||
+        (!isReverseRollForPlayer && cwDist > 22 && ccwDist > 0 && ccwDist <= 12 && !(p.position === 10 && p.inJail));
+      const activeStepDist = useReverseStep ? ccwDist : cwDist;
+      const stepDelta = useReverseStep ? -1 : 1;
+
       const isDirectWarp =
-        (p.position === 10 && p.inJail && curVis !== 10) || cwDist > 16 || cwDist === 0;
+        (p.position === 10 && p.inJail && curVis !== 10) ||
+        activeStepDist > 18 ||
+        activeStepDist === 0;
 
       if (isDirectWarp) {
         setMovingMode((m) => ({ ...m, [p.id]: 'WARP' }));
@@ -216,29 +330,20 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
         timersRef.current[p.id] = setTimeout(() => {
           delete timersRef.current[p.id];
           setMovingMode((m) => ({ ...m, [p.id]: null }));
-          const lid = `${p.id}_${Date.now()}`;
-          setLandings((ls) => [
-            ...ls.slice(-4),
-            { id: lid, playerId: p.id, cellId: p.position, inJail: p.inJail, color: p.color },
-          ]);
-          const rmLand = setTimeout(() => {
-            auxTimersRef.current.delete(rmLand);
-            setLandings((ls) => ls.filter((x) => x.id !== lid));
-          }, 700);
-          auxTimersRef.current.add(rmLand);
+          triggerArrivalLanding(p.position, p.inJail, p.color);
         }, 380);
       } else {
-        // Плавное пошаговое движение по клеткам периметра (125 мс на клетку)
+        // Плавное пошаговое движение по клеткам периметра (вперёд или задом наперёд ⏪)
         setMovingMode((m) => ({ ...m, [p.id]: 'STEP' }));
         const advanceOne = (fromCell: number) => {
-          const nextCell = (fromCell + 1) % 40;
+          const nextCell = (fromCell + stepDelta + 40) % 40;
           setVisualPos((v) => ({ ...v, [p.id]: nextCell }));
           setStepTick((st) => ({ ...st, [p.id]: (st[p.id] ?? 0) + 1 }));
 
           const tid = `${p.id}_${nextCell}_${Date.now()}_${Math.random()}`;
           setStepTrails((tr) => [
             ...tr.slice(-10),
-            { id: tid, cellId: fromCell, inJail: false, color: p.color },
+            { id: tid, cellId: fromCell, inJail: false, color: useReverseStep ? '#C084FC' : p.color },
           ]);
           const rmTrail = setTimeout(() => {
             auxTimersRef.current.delete(rmTrail);
@@ -251,22 +356,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               delete timersRef.current[p.id];
               setMovingMode((m) => ({ ...m, [p.id]: null }));
               const latestP = playersRef.current.find((x) => x.id === p.id) ?? p;
-              const lid = `${p.id}_${Date.now()}`;
-              setLandings((ls) => [
-                ...ls.slice(-4),
-                {
-                  id: lid,
-                  playerId: p.id,
-                  cellId: nextCell,
-                  inJail: latestP.inJail,
-                  color: latestP.color,
-                },
-              ]);
-              const rmLand = setTimeout(() => {
-                auxTimersRef.current.delete(rmLand);
-                setLandings((ls) => ls.filter((x) => x.id !== lid));
-              }, 700);
-              auxTimersRef.current.add(rmLand);
+              triggerArrivalLanding(nextCell, latestP.inJail, latestP.color);
             }, 100);
           } else {
             timersRef.current[p.id] = setTimeout(() => advanceOne(nextCell), 85);
@@ -329,6 +419,25 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
         );
       })}
 
+      {/* Захлопывающиеся ворота КПП Учебки на клетке #10 после бусификации */}
+      {jailSlam && (
+        <div
+          style={{ left: '90%', top: '10%' }}
+          className="absolute -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none flex flex-col items-center animate-pop-in"
+        >
+          <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl border-2 border-[#F43F5E] bg-[#0B0F0C]/92 shadow-[0_0_28px_rgba(244,63,94,0.85)] overflow-hidden relative flex items-center justify-center">
+            <span className="absolute inset-x-0 top-2 h-[2px] bg-amber-400/75" />
+            <span className="absolute inset-x-0 bottom-2 h-[2px] bg-amber-400/75" />
+            <span className="relative text-lg sm:text-xl drop-shadow">
+              <AppleEmoji emoji="🪖" />
+            </span>
+          </div>
+          <span className="mt-1 px-2 py-0.5 rounded-full bg-[#F43F5E] text-white font-display text-[8px] sm:text-[9.5px] font-extrabold uppercase tracking-wider shadow-lg border border-white/60 whitespace-nowrap">
+            В УЧЕБКЕ!
+          </span>
+        </div>
+      )}
+
       {/* Сами фишки игроков */}
       {alivePlayers.map((p) => {
         const vp = visualPos[p.id] ?? p.position;
@@ -341,6 +450,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
         const isActive = isPlaying && p.id === currentPlayerId;
         const mode = movingMode[p.id];
         const tick = stepTick[p.id] ?? 0;
+        const isArrestMode = mode === 'ARREST_CUFF' || mode === 'ARREST_HAUL';
 
         return (
           <div
@@ -350,15 +460,24 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               left: `${coords.x}%`,
               top: `${coords.y}%`,
               transition:
-                mode === 'WARP'
+                mode === 'ARREST_HAUL'
+                  ? 'left 840ms cubic-bezier(0.34, 1.24, 0.64, 1), top 840ms cubic-bezier(0.34, 1.24, 0.64, 1)'
+                  : mode === 'WARP'
                   ? 'left 380ms cubic-bezier(0.22, 1, 0.36, 1), top 380ms cubic-bezier(0.22, 1, 0.36, 1)'
                   : 'left 125ms cubic-bezier(0.22, 1, 0.36, 1), top 125ms cubic-bezier(0.22, 1, 0.36, 1)',
-              zIndex: mode ? 45 : isActive ? 38 : 32 + slotIdx,
+              zIndex: isArrestMode ? 55 : mode ? 45 : isActive ? 38 : 32 + slotIdx,
             }}
             className="absolute -translate-x-1/2 -translate-y-1/2"
           >
+            {/* Полицейские красно-синие мигалки вокруг фишки при аресте */}
+            {isArrestMode && (
+              <span
+                className="absolute -inset-2 sm:-inset-3 rounded-full border-2 border-[#F43F5E] bg-gradient-to-r from-[#F43F5E]/45 to-[#3B82F6]/45 shadow-[0_0_24px_rgba(244,63,94,0.95),0_0_24px_rgba(59,130,246,0.9)] animate-ping pointer-events-none"
+              />
+            )}
+
             {/* Пульсирующий ореол активного хода */}
-            {isActive && (
+            {isActive && !isArrestMode && (
               <span
                 style={{
                   backgroundColor: `${p.color}55`,
@@ -373,7 +492,9 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               key={mode === 'STEP' ? `hop_${tick}` : 'idle'}
               style={{
                 backgroundColor: p.color,
-                boxShadow: isActive
+                boxShadow: isArrestMode
+                  ? '0 0 22px #F43F5E, 0 0 14px #3B82F6, 0 6px 16px rgba(0,0,0,0.9)'
+                  : isActive
                   ? `0 5px 14px rgba(0,0,0,0.85), 0 0 14px ${p.color}, inset 0 1.5px 2.5px rgba(255,255,255,0.6)`
                   : '0 4px 10px rgba(0,0,0,0.82), inset 0 1.5px 2.5px rgba(255,255,255,0.45)',
               }}
@@ -381,7 +502,9 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
                 isCrowdedCell
                   ? 'w-[15px] h-[15px] sm:w-[24px] sm:h-[24px] md:w-[28px] md:h-[28px]'
                   : 'w-[18px] h-[18px] sm:w-[26px] sm:h-[26px] md:w-[31px] md:h-[31px]'
-              } rounded-full border-[1.5px] sm:border-[2.5px] border-white outline outline-[1.5px] sm:outline-[2.5px] outline-[#09090b] flex items-center justify-center select-none ${
+              } rounded-full border-[1.5px] sm:border-[2.5px] ${
+                isArrestMode ? 'border-[#FDA4AF] scale-115' : 'border-white'
+              } outline outline-[1.5px] sm:outline-[2.5px] outline-[#09090b] flex items-center justify-center select-none transition-transform ${
                 mode === 'STEP' ? 'animate-token-hop' : ''
               }`}
             >
@@ -395,16 +518,33 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               >
                 <PlayerAvatar avatar={p.avatar} fill />
               </span>
+
+              {/* Индикатор активного дебаффа «Задний ход ⏪» прямо на фишке */}
+              {(p.reverseTurns ?? 0) > 0 && (
+                <span
+                  title={`Задний ход: ещё ${p.reverseTurns} бр.`}
+                  className="absolute -bottom-1.5 -right-1.5 px-1 py-[0.5px] rounded-full bg-purple-600 border border-purple-200 text-[7px] sm:text-[8.5px] font-black text-white leading-none shadow-md"
+                >
+                  ⏪{p.reverseTurns}
+                </span>
+              )}
             </div>
 
-            {/* Плашка имени во время шагания фишки */}
-            {mode && (
-              <span
-                style={{ backgroundColor: p.color }}
-                className="hidden sm:inline-block absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[9px] font-black text-white whitespace-nowrap shadow-md border border-white/60"
-              >
-                {p.name}
+            {/* Плашка при бусификации или шагании фишки */}
+            {isArrestMode ? (
+              <span className="absolute -top-6 sm:-top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[8.5px] sm:text-[10px] font-extrabold text-white whitespace-nowrap shadow-[0_4px_14px_rgba(244,63,94,0.8)] border border-white/80 bg-gradient-to-r from-[#F43F5E] to-[#B45309] animate-bounce inline-flex items-center gap-1">
+                <AppleEmoji emoji={mode === 'ARREST_CUFF' ? '🚐' : '🪖'} />
+                <span>{mode === 'ARREST_CUFF' ? 'БУСИФИКАЦИЯ!' : 'В УЧЕБКУ!'}</span>
               </span>
+            ) : (
+              mode && (
+                <span
+                  style={{ backgroundColor: p.color }}
+                  className="hidden sm:inline-block absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[9px] font-black text-white whitespace-nowrap shadow-md border border-white/60"
+                >
+                  {p.name}
+                </span>
+              )
             )}
           </div>
         );

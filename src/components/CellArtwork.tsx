@@ -703,60 +703,25 @@ export const CellArtwork: React.FC<CellArtworkProps> = ({
           </g>
         );
 
-      // 10: СИЗО #13 (Carmine Steel Bastion)
+      // 10: Учебка (Custom Dark Luxury Bastion Icon)
       case 10:
         return (
           <g>
             <defs>
-              <radialGradient id={`${gid}-jail-glow`} cx="50%" cy="38%" r="52%">
-                <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.28" />
-                <stop offset="100%" stopColor="#090b10" stopOpacity="0" />
-              </radialGradient>
+              <clipPath id={`${gid}-uchebka-clip`}>
+                <rect x="2" y="2" width="96" height="96" rx="14" />
+              </clipPath>
             </defs>
-            <rect x="6" y="6" width="88" height="88" rx="14" fill="#0b0e15" stroke="#f43f5e" strokeOpacity="0.78" strokeWidth="2.3" />
-            <rect x="11" y="11" width="78" height="78" rx="10" fill="#121622" stroke="#334155" strokeWidth="1.5" />
-            <circle cx="50" cy="40" r="34" fill={`url(#${gid}-jail-glow)`} />
-
-            {/* Scratched tally marks on cell wall */}
-            <g stroke="#475569" strokeWidth="1.5" strokeLinecap="round">
-              <line x1="17" y1="18" x2="17" y2="25" />
-              <line x1="20" y1="18" x2="20" y2="25" />
-              <line x1="23" y1="18" x2="23" y2="25" />
-              <line x1="15.5" y1="23.5" x2="24.5" y2="19.5" />
-            </g>
-
-            {/* Horizontal reinforced crossbars with rivets */}
-            <rect x="12" y="29" width="76" height="5.5" fill="#334155" stroke="#090b10" strokeWidth="1" />
-            <rect x="12" y="61" width="76" height="5.5" fill="#334155" stroke="#090b10" strokeWidth="1" />
-            {/* Vertical brushed steel prison bars */}
-            {[24, 37, 50, 63, 76].map((x) => (
-              <g key={x}>
-                <line x1={x + 1.8} y1="12" x2={x + 1.8} y2="88" stroke="#05070c" strokeWidth="4.5" opacity="0.65" />
-                <line x1={x} y1="12" x2={x} y2="88" stroke="#64748b" strokeWidth="5.2" />
-                <line x1={x - 1.2} y1="12" x2={x - 1.2} y2="88" stroke="#e2e8f0" strokeWidth="1.4" />
-                <circle cx={x} cy="31.7" r="1.3" fill="#cbd5e1" />
-                <circle cx={x} cy="63.7" r="1.3" fill="#cbd5e1" />
-              </g>
-            ))}
-
-            {/* Barbed wire strand across top */}
-            <path d="M 14 17 Q 32 22 50 17 T 86 17" fill="none" stroke="#94a3b8" strokeWidth="1.6" />
-            {[28, 50, 72].map((bx) => (
-              <path key={bx} d={`M ${bx - 3} 14 L ${bx + 3} 20 M ${bx + 3} 14 L ${bx - 3} 20`} stroke="#cbd5e1" strokeWidth="1.4" />
-            ))}
-
-            {/* Tin prison mug with hot chifir */}
-            <g>
-              <path d="M 80 66 C 86 66, 86 78, 80 78" fill="none" stroke="#cbd5e1" strokeWidth="2.8" />
-              <rect x="57" y="60" width="23" height="23" rx="3" fill="#475569" stroke="#090b10" strokeWidth="2" />
-              <ellipse cx="68.5" cy="61.5" rx="10" ry="3" fill="#291205" stroke="#cbd5e1" strokeWidth="1.1" />
-              <path d="M 65 55 Q 63 49 67 45 M 72 54 Q 70 48 74 44" fill="none" stroke="#e2e8f0" strokeWidth="1.6" strokeLinecap="round" opacity="0.75" />
-            </g>
-            {/* Carmine СИЗО #13 badge */}
-            <rect x="13" y="40" width="52" height="20" rx="5" fill="#e11d48" stroke="#fda4af" strokeWidth="1.6" />
-            <text x="39" y="53.5" textAnchor="middle" fontFamily={FONT} fontSize="9.4" fontWeight="900" fill="#ffffff" letterSpacing="0.4">
-              СИЗО #13
-            </text>
+            <rect x="2" y="2" width="96" height="96" rx="14" fill="#0b0e15" />
+            <image
+              href="/art/corner_uchebka.png"
+              x="-10"
+              y="-10"
+              width="120"
+              height="120"
+              preserveAspectRatio="xMidYMid slice"
+              clipPath={`url(#${gid}-uchebka-clip)`}
+            />
           </g>
         );
 
@@ -1637,47 +1602,25 @@ export const CellArtwork: React.FC<CellArtworkProps> = ({
           </g>
         );
 
-      // 30: Приём с мигалками! (Carmine-Cobalt Police Bastion)
+      // 30: Попался к ТЦК! (Custom Dark Luxury Bastion Icon)
       case 30:
         return (
           <g>
             <defs>
-              <radialGradient id={`${gid}-red-strobe`} cx="30%" cy="28%" r="45%">
-                <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.6" />
-                <stop offset="100%" stopColor="#090b10" stopOpacity="0" />
-              </radialGradient>
-              <radialGradient id={`${gid}-blue-strobe`} cx="70%" cy="28%" r="45%">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.6" />
-                <stop offset="100%" stopColor="#090b10" stopOpacity="0" />
-              </radialGradient>
+              <clipPath id={`${gid}-tck-clip`}>
+                <rect x="2" y="2" width="96" height="96" rx="14" />
+              </clipPath>
             </defs>
-            <rect x="6" y="6" width="88" height="88" rx="14" fill="#0b0e16" stroke="#f43f5e" strokeOpacity="0.82" strokeWidth="2.3" />
-            <circle cx="32" cy="28" r="34" fill={`url(#${gid}-red-strobe)`} />
-            <circle cx="68" cy="28" r="34" fill={`url(#${gid}-blue-strobe)`} />
-
-            {/* 3D Police Roof Strobe Lightbar */}
-            <rect x="18" y="16" width="31" height="13" rx="4" fill="#e11d48" stroke="#fda4af" strokeWidth="1.6" />
-            <rect x="51" y="16" width="31" height="13" rx="4" fill="#2563eb" stroke="#93c5fd" strokeWidth="1.6" />
-            <rect x="46" y="15" width="8" height="15" rx="2" fill="#cbd5e1" stroke="#090b10" strokeWidth="1.4" />
-            {/* Strobe rays */}
-            <line x1="14" y1="12" x2="21" y2="16" stroke="#fda4af" strokeWidth="2" strokeLinecap="round" />
-            <line x1="86" y1="12" x2="79" y2="16" stroke="#93c5fd" strokeWidth="2" strokeLinecap="round" />
-
-            {/* 3D Brushed Chrome Handcuffs in foreground */}
-            <circle cx="34" cy="51" r="12.5" fill="none" stroke="#020617" strokeWidth="6.5" opacity="0.6" transform="translate(1.5, 2)" />
-            <circle cx="34" cy="51" r="12.5" fill="none" stroke="#cbd5e1" strokeWidth="5" />
-            <circle cx="34" cy="51" r="12.5" fill="none" stroke="#f8fafc" strokeWidth="1.4" />
-            <circle cx="66" cy="51" r="12.5" fill="none" stroke="#020617" strokeWidth="6.5" opacity="0.6" transform="translate(1.5, 2)" />
-            <circle cx="66" cy="51" r="12.5" fill="none" stroke="#cbd5e1" strokeWidth="5" />
-            <circle cx="66" cy="51" r="12.5" fill="none" stroke="#f8fafc" strokeWidth="1.4" />
-            {/* Chain links connecting cuffs */}
-            <ellipse cx="50" cy="49" rx="6.5" ry="3.2" fill="none" stroke="#e2e8f0" strokeWidth="2.8" />
-
-            {/* Carmine В СИЗО! plaque */}
-            <rect x="13" y="72" width="74" height="16" rx="5" fill="#e11d48" stroke="#fda4af" strokeWidth="1.6" />
-            <text x="50" y="83" textAnchor="middle" fontFamily={FONT} fontSize="8.6" fontWeight="900" fill="#ffffff" letterSpacing="0.6">
-              В СИЗО #13!
-            </text>
+            <rect x="2" y="2" width="96" height="96" rx="14" fill="#0b0e16" />
+            <image
+              href="/art/corner_tck.png"
+              x="-4"
+              y="-4"
+              width="108"
+              height="108"
+              preserveAspectRatio="xMidYMid slice"
+              clipPath={`url(#${gid}-tck-clip)`}
+            />
           </g>
         );
 

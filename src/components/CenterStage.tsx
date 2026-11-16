@@ -13,7 +13,10 @@ import {
 import { DiceSkin, PlayerState, RoomState, SpeedDieFace, TradeSide } from '../../shared/types.ts';
 import { emitAckChance } from '../hooks/useGameSocket.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
+import { AppleEmoji, renderAppleEmojis } from './AppleEmoji.tsx';
 import { IndustryCardBanner } from './CardIllustration.tsx';
+import { CellArtwork } from './CellArtwork.tsx';
+import { InlineSpeedDieChip, MiniStyledDie } from './DiceSkinPreview.tsx';
 import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 export interface TradeDraftState {
@@ -118,14 +121,136 @@ const DiceDualIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4 s
   </svg>
 );
 
-function renderStylizedSegment(segment: string, keyPrefix: string): React.ReactNode {
+function parseAndRenderDiceBracket(
+  rawToken: string,
+  skin: DiceSkin,
+  key: string
+): React.ReactNode | null {
+  const bracketMatch = rawToken.match(/\[([^\]]+)\]/);
+  if (!bracketMatch) return null;
+  const inside = bracketMatch[1].trim();
+  const m = inside.match(/^([1-6])\s*[+:]\s*([1-6])(.*)$/);
+  if (!m) return null;
+  const d1 = Number(m[1]);
+  const d2 = Number(m[2]);
+  const rest = m[3].trim();
+
+  let speedFace: SpeedDieFace | null = null;
+  let totalVal: string | null = null;
+
+  const eqMatch = rest.match(/=\s*(\d+)/);
+  if (eqMatch) totalVal = eqMatch[1];
+
+  if (/АВТОБУС/i.test(rest)) {
+    speedFace = 'BUS';
+  } else if (/ПОДЛЯНКА|ХАОС|М1|M1/i.test(rest)) {
+    speedFace = 'M1';
+  } else {
+    const spNum = rest.match(/(?:⚡|:\s*)([1-3])/);
+    if (spNum) speedFace = Number(spNum[1]) as 1 | 2 | 3;
+  }
+
+  const leadingPrefix = rawToken.slice(0, bracketMatch.index ?? 0).replace(/🎲/g, '').trim();
+
+  return (
+    <span
+      key={key}
+      className="inline-flex items-center gap-1 px-1.5 py-[2px] mx-0.5 rounded-lg bg-[#0B0E16]/95 border border-white/14 align-middle shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+    >
+      {leadingPrefix ? (
+        <span className="inline-flex items-center mr-0.5">
+          {renderAppleEmojis(leadingPrefix, `${key}_pre`)}
+        </span>
+      ) : null}
+      <MiniStyledDie value={d1} skin={skin} size={18} />
+      <MiniStyledDie value={d2} skin={skin} size={18} />
+      {speedFace !== null && <InlineSpeedDieChip face={speedFace} />}
+      {totalVal !== null && (
+        <span className="font-mono-num font-extrabold text-[10.5px] sm:text-[11.5px] text-[#F3D082] pl-0.5">
+          = {totalVal}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const TradePropertyIconTile: React.FC<{
+  cellId: number;
+  censored: boolean;
+  fallbackHex?: string;
+  onRemove?: () => void;
+}> = ({ cellId, censored, fallbackHex = '#E5B869', onRemove }) => {
+  const cDef = BOARD_CELLS[cellId];
+  const grp = cDef.groupId ? INDUSTRIES[cDef.groupId] : null;
+  const accent = grp?.accentHex || fallbackHex;
+  const label = txt(cDef.name, cDef.cleanName, censored);
+
+  const inner = (
+    <>
+      <div
+        style={{
+          backgroundColor: accent,
+          boxShadow: `0 1px 6px ${accent}88`,
+        }}
+        className="w-full h-[4px] shrink-0"
+      />
+      <div className="w-11 h-10 sm:w-12 sm:h-11 p-1 flex items-center justify-center bg-[#0B0E16] relative">
+        <CellArtwork cellId={cellId} side="corner" censored={censored} className="w-full h-full" />
+        {onRemove && (
+          <span className="opacity-0 group-hover/tile:opacity-100 transition-opacity absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-[#F43F5E] text-white text-[8px] font-black flex items-center justify-center shadow">
+            ✕
+          </span>
+        )}
+      </div>
+      {cDef.price ? (
+        <div className="w-full bg-[#07090E] border-t border-white/[0.07] py-[1px] text-center font-mono-num font-extrabold text-[8.5px] text-[#F3D082] leading-tight">
+          ${cDef.price}
+        </div>
+      ) : null}
+    </>
+  );
+
+  if (onRemove) {
+    return (
+      <button
+        type="button"
+        onClick={onRemove}
+        title={`${label}${cDef.price ? ` ($${cDef.price})` : ''} — нажмите, чтобы убрать`}
+        style={{ borderColor: `${accent}66` }}
+        className="group/tile inline-flex flex-col items-center rounded-lg bg-[#121622] hover:bg-[#191F30] border overflow-hidden shadow-md hover:scale-105 transition cursor-pointer shrink-0"
+      >
+        {inner}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      title={`${label}${cDef.price ? ` ($${cDef.price})` : ''}`}
+      style={{ borderColor: `${accent}66` }}
+      className="inline-flex flex-col items-center rounded-lg bg-[#121622] border overflow-hidden shadow-md shrink-0"
+    >
+      {inner}
+    </div>
+  );
+};
+
+function renderStylizedSegment(
+  segment: string,
+  keyPrefix: string,
+  diceSkin: DiceSkin = 'classic'
+): React.ReactNode {
   if (!segment) return null;
-  const tokenRegex = /(КАТКА НАЧАЛАСЬ!|ДУБЛЬ!|[+-]?\$[\d\s\u00A0]+)/gi;
+  const tokenRegex =
+    /((?:(?:🔥|🚐|😈|🚨|🪖|📋)?\s*🎲\s*)?\[[1-6]\s*[+:]\s*[1-6][^\]]*\]|КАТКА НАЧАЛАСЬ!|ДУБЛЬ!|[+-]?\$[\d\s\u00A0]+)/gi;
   const chunks = segment.split(tokenRegex);
-  if (chunks.length === 1) return segment;
 
   return chunks.map((chunk, i) => {
     if (!chunk) return null;
+    if (chunk.includes('[')) {
+      const diceNode = parseAndRenderDiceBracket(chunk, diceSkin, `${keyPrefix}_dice_${i}`);
+      if (diceNode) return diceNode;
+    }
     if (/^(КАТКА НАЧАЛАСЬ!|ДУБЛЬ!)$/i.test(chunk)) {
       return (
         <span
@@ -157,15 +282,23 @@ function renderStylizedSegment(segment: string, keyPrefix: string): React.ReactN
         </React.Fragment>
       );
     }
-    return <React.Fragment key={`${keyPrefix}_t_${i}`}>{chunk}</React.Fragment>;
+    return (
+      <React.Fragment key={`${keyPrefix}_t_${i}`}>
+        {renderAppleEmojis(chunk, `${keyPrefix}_em_${i}`)}
+      </React.Fragment>
+    );
   });
 }
 
-function renderColoredLogText(text: string, players: PlayerState[]): React.ReactNode {
+function renderColoredLogText(
+  text: string,
+  players: PlayerState[],
+  diceSkin: DiceSkin = 'classic'
+): React.ReactNode {
   const validPlayers = players
     .filter((p) => p.name && p.name.length > 0)
     .sort((a, b) => b.name.length - a.name.length);
-  if (validPlayers.length === 0) return renderStylizedSegment(text, 'raw');
+  if (validPlayers.length === 0) return renderStylizedSegment(text, 'raw', diceSkin);
 
   const escaped = validPlayers.map((p) => p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const regex = new RegExp(`(${escaped.join('|')})`, 'g');
@@ -181,7 +314,11 @@ function renderColoredLogText(text: string, players: PlayerState[]): React.React
         </span>
       );
     }
-    return <React.Fragment key={idx}>{renderStylizedSegment(part, `seg_${idx}`)}</React.Fragment>;
+    return (
+      <React.Fragment key={idx}>
+        {renderStylizedSegment(part, `seg_${idx}`, diceSkin)}
+      </React.Fragment>
+    );
   });
 }
 
@@ -271,13 +408,17 @@ const SpeedDieBox: React.FC<{ face: SpeedDieFace; animKey: number }> = ({ face, 
   >
     {face === 'BUS' ? (
       <>
-        <span className="text-base sm:text-xl leading-none">🚐</span>
+        <span className="text-base sm:text-xl leading-none">
+          <AppleEmoji emoji="🚐" />
+        </span>
         <span className="text-[8px] sm:text-[10px] mt-0.5">БУС</span>
       </>
     ) : face === 'M1' ? (
       <>
-        <span className="text-base sm:text-xl leading-none">😈</span>
-        <span className="text-[8px] sm:text-[10px] mt-0.5">М1</span>
+        <span className="text-base sm:text-xl leading-none">
+          <AppleEmoji emoji="😈" />
+        </span>
+        <span className="text-[7.5px] sm:text-[9.5px] mt-0.5">ХАОС</span>
       </>
     ) : (
       <>
@@ -450,6 +591,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
   const isWalkingAfterRoll =
     isWalkingToChance ||
     (!!roomState.lastDice &&
+      roomState.phase !== 'CHOOSE_SPEED_TARGET' &&
       nowMs - roomState.lastDice.timestamp < walkMs &&
       (roomState.phase !== 'PRE_ROLL' || roomState.lastDice.rolledBy === myPlayerId));
 
@@ -488,6 +630,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
 
   return (
     <div
+      id="center-stage-arena"
       style={{ gridRow: '2 / span 9', gridColumn: '2 / span 9' }}
       className="min-w-0 min-h-0 bg-gradient-to-b from-[#11141D] via-[#0D1017] to-[#090B10] border border-white/[0.07] rounded-[8px] sm:rounded-[12px] m-[1px] sm:m-[2px] p-1.5 sm:p-2.5 md:p-3.5 flex flex-col justify-between overflow-hidden relative shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_48px_rgba(0,0,0,0.72)]"
     >
@@ -615,43 +758,31 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                 const empty =
                   side.cash === 0 && side.shields === 0 && side.propertyIds.length === 0;
                 return (
-                  <div className="flex flex-wrap gap-1">
-                    {side.propertyIds.map((cid) => {
-                      const def = BOARD_CELLS[cid];
-                      const grp = def.groupId ? INDUSTRIES[def.groupId] : null;
-                      return (
-                        <span
-                          key={cid}
-                          style={{ borderColor: grp?.accentHex || '#E5B869' }}
-                          className={`px-1.5 py-0.5 rounded border-l-[3px] text-[10px] font-bold flex items-center gap-1 ${
-                            tone === 'give'
-                              ? 'bg-[#F43F5E]/14 text-rose-100 border border-[#F43F5E]/25'
-                              : 'bg-[#10B981]/14 text-emerald-100 border border-[#10B981]/25'
-                          }`}
-                        >
-                          <span>{txt(def.shortName || def.name, def.cleanName, censored)}</span>
-                          {def.price && (
-                            <span className="font-mono-num text-[9.5px] opacity-80">
-                              ${def.price}
-                            </span>
-                          )}
-                        </span>
-                      );
-                    })}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {side.propertyIds.map((cid) => (
+                      <TradePropertyIconTile
+                        key={cid}
+                        cellId={cid}
+                        censored={censored}
+                        fallbackHex={tone === 'give' ? '#F43F5E' : '#10B981'}
+                      />
+                    ))}
                     {side.cash > 0 && (
                       <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono-num ${
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold font-mono-num inline-flex items-center gap-1 ${
                           tone === 'give'
                             ? 'bg-[#F43F5E]/20 border border-[#F43F5E]/35 text-rose-200'
                             : 'bg-[#10B981]/20 border border-[#10B981]/35 text-emerald-200'
                         }`}
                       >
-                        💵 {formatMoney(side.cash)}
+                        <AppleEmoji emoji="💵" />
+                        <span>{formatMoney(side.cash)}</span>
                       </span>
                     )}
                     {side.shields > 0 && (
-                      <span className="px-1.5 py-0.5 rounded bg-sky-500/25 text-sky-200 text-[10px] font-extrabold font-mono-num">
-                        🛡️ ×{side.shields}
+                      <span className="px-1.5 py-0.5 rounded bg-sky-500/25 text-sky-200 text-[10px] font-extrabold font-mono-num inline-flex items-center gap-1">
+                        <AppleEmoji emoji="🛡️" />
+                        <span>×{side.shields}</span>
                       </span>
                     )}
                     {empty && (
@@ -683,7 +814,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 text-[11px]">
                     <div className="rounded-xl bg-[#0B0D14]/90 border border-[#F43F5E]/35 p-2 space-y-1.5">
                       <div className="text-[10px] font-bold text-[#FDA4AF] flex justify-between items-center">
                         <span>{leftTitle}</span>
@@ -889,41 +1020,27 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                       </div>
                     </div>
 
-                    {/* Зона активов с золотисто-графитовым пунктиром и мини-карточками */}
-                    <div className="rounded-lg border border-dashed border-[#E5B869]/38 bg-[#07090D]/80 p-1.5 min-h-[42px] flex flex-wrap content-start gap-1">
+                    {/* Зона активов с золотисто-графитовым пунктиром и иконками карточек */}
+                    <div className="rounded-lg border border-dashed border-[#E5B869]/38 bg-[#07090D]/80 p-1.5 min-h-[54px] flex flex-wrap content-start gap-1.5">
                       {tradeDraft.offerProps.length === 0 ? (
                         <span className="text-neutral-500 text-[9.5px] leading-tight m-auto text-center">
                           Кликните по своим полям на доске
                         </span>
                       ) : (
-                        tradeDraft.offerProps.map((cid) => {
-                          const cDef = BOARD_CELLS[cid];
-                          const grp = cDef.groupId ? INDUSTRIES[cDef.groupId] : null;
-                          return (
-                            <button
-                              key={cid}
-                              type="button"
-                              onClick={() =>
-                                onChangeTradeDraft((p) => ({
-                                  ...p,
-                                  offerProps: p.offerProps.filter((id) => id !== cid),
-                                }))
-                              }
-                              title="Нажмите, чтобы убрать из договора"
-                              style={{ borderLeftColor: grp?.accentHex || me.color }}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#141824] hover:bg-[#1C2132] border border-white/10 border-l-[3px] text-[10px] font-semibold text-[#F1F5F9] cursor-pointer transition"
-                            >
-                              <span className="truncate max-w-[96px]">
-                                {txt(cDef.shortName || cDef.name, cDef.cleanName, censored)}
-                              </span>
-                              {cDef.price && (
-                                <span className="font-mono-num text-[9px] text-[#E5B869]">
-                                  ${cDef.price}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })
+                        tradeDraft.offerProps.map((cid) => (
+                          <TradePropertyIconTile
+                            key={cid}
+                            cellId={cid}
+                            censored={censored}
+                            fallbackHex={me.color}
+                            onRemove={() =>
+                              onChangeTradeDraft((p) => ({
+                                ...p,
+                                offerProps: p.offerProps.filter((id) => id !== cid),
+                              }))
+                            }
+                          />
+                        ))
                       )}
                     </div>
                   </div>
@@ -1098,41 +1215,27 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                       </div>
                     </div>
 
-                    {/* Зона активов партнёра с золотисто-графитовым пунктиром и мини-карточками */}
-                    <div className="rounded-lg border border-dashed border-white/20 hover:border-[#E5B869]/40 bg-[#07090D]/80 p-1.5 min-h-[42px] flex flex-wrap content-start gap-1 transition-colors">
+                    {/* Зона активов партнёра с золотисто-графитовым пунктиром и иконками карточек */}
+                    <div className="rounded-lg border border-dashed border-white/20 hover:border-[#E5B869]/40 bg-[#07090D]/80 p-1.5 min-h-[54px] flex flex-wrap content-start gap-1.5 transition-colors">
                       {tradeDraft.reqProps.length === 0 ? (
                         <span className="text-neutral-500 text-[9.5px] leading-tight m-auto text-center">
                           Кликните по полям партнёра на доске
                         </span>
                       ) : (
-                        tradeDraft.reqProps.map((cid) => {
-                          const cDef = BOARD_CELLS[cid];
-                          const grp = cDef.groupId ? INDUSTRIES[cDef.groupId] : null;
-                          return (
-                            <button
-                              key={cid}
-                              type="button"
-                              onClick={() =>
-                                onChangeTradeDraft((p) => ({
-                                  ...p,
-                                  reqProps: p.reqProps.filter((id) => id !== cid),
-                                }))
-                              }
-                              title="Нажмите, чтобы убрать из договора"
-                              style={{ borderLeftColor: grp?.accentHex || partner.color }}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#141824] hover:bg-[#1C2132] border border-white/10 border-l-[3px] text-[10px] font-semibold text-[#F1F5F9] cursor-pointer transition"
-                            >
-                              <span className="truncate max-w-[96px]">
-                                {txt(cDef.shortName || cDef.name, cDef.cleanName, censored)}
-                              </span>
-                              {cDef.price && (
-                                <span className="font-mono-num text-[9px] text-[#E5B869]">
-                                  ${cDef.price}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })
+                        tradeDraft.reqProps.map((cid) => (
+                          <TradePropertyIconTile
+                            key={cid}
+                            cellId={cid}
+                            censored={censored}
+                            fallbackHex={partner.color}
+                            onRemove={() =>
+                              onChangeTradeDraft((p) => ({
+                                ...p,
+                                reqProps: p.reqProps.filter((id) => id !== cid),
+                              }))
+                            }
+                          />
+                        ))
                       )}
                     </div>
                   </div>
@@ -1146,7 +1249,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                     </div>
                   )}
 
-                <div className="flex items-center justify-center gap-2 pt-0.5">
+                <div className="sticky bottom-0 bg-[#11141D]/95 backdrop-blur-md flex items-center justify-center gap-2 pt-1.5 pb-0.5 z-10 border-t border-white/[0.06]">
                   <button
                     disabled={
                       (roomState.tradesProposedThisTurn ?? 0) >= 3 ||
@@ -1246,13 +1349,27 @@ export const CenterStage: React.FC<CenterStageProps> = ({
 
             {/* Мини-панель активных эффектов/дебаффов игрока */}
             {(curPlayer.inJail ||
+              (roomState.extraTurnsLeft ?? 0) > 0 ||
+              (curPlayer.reverseTurns ?? 0) > 0 ||
               curPlayer.shields > 0 ||
               curPlayer.credit ||
               (speedUnlock !== null && roomState.round >= speedUnlock)) && (
               <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px] font-bold">
+                {(roomState.extraTurnsLeft ?? 0) > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-[#10B981]/18 border border-[#10B981]/45 text-[#6EE7B7] font-mono-num inline-flex items-center gap-1">
+                    <AppleEmoji emoji="🎲" />
+                    <span>Ещё ходов: +{roomState.extraTurnsLeft}</span>
+                  </span>
+                )}
                 {curPlayer.inJail && (
-                  <span className="px-2 py-0.5 rounded-full bg-[#F43F5E]/18 border border-[#F43F5E]/40 text-rose-200 font-mono-num">
-                    ⛓️ В СИЗО #13 ({curPlayer.jailTurns}/3)
+                  <span className="px-2 py-0.5 rounded-full bg-[#F43F5E]/18 border border-[#F43F5E]/40 text-rose-200 font-mono-num inline-flex items-center gap-1">
+                    <AppleEmoji emoji="🪖" />
+                    <span>В Учебке ({curPlayer.jailTurns}/3)</span>
+                  </span>
+                )}
+                {(curPlayer.reverseTurns ?? 0) > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-400/50 text-purple-200 font-mono-num">
+                    ⏪ Задний ход ×{curPlayer.reverseTurns}
                   </span>
                 )}
                 {curPlayer.shields > 0 && (
@@ -1280,7 +1397,11 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                   className="btn-emerald-3d active:translate-y-1 w-full py-2 sm:py-2.5 px-4 rounded-xl font-display font-extrabold text-[11px] sm:text-xs md:text-[13.5px] tracking-wider uppercase flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <DiceDualIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span>БРОСИТЬ КУБИКИ</span>
+                  <span>
+                    {(curPlayer.reverseTurns ?? 0) > 0
+                      ? '⏪ БРОСИТЬ ЗАДОМ НАПЕРЁД'
+                      : 'БРОСИТЬ КУБИКИ'}
+                  </span>
                 </button>
                 <div className="hidden sm:block text-[10.5px] text-neutral-400 text-center">
                   Кликните на любую карточку поля, чтобы построить филиал или заложить актив
@@ -1289,9 +1410,12 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                   {me?.inJail && me.cash >= 500 && (
                     <button
                       onClick={onPayJail}
-                      className="flex-1 py-1 sm:py-1.5 rounded-lg bg-[#162032] hover:bg-sky-600 border border-sky-400/40 text-sky-100 hover:text-white font-bold text-[10px] sm:text-xs cursor-pointer transition"
+                      className="flex-1 py-1 sm:py-1.5 rounded-lg bg-[#162032] hover:bg-sky-600 border border-sky-400/40 text-sky-100 hover:text-white font-bold text-[10px] sm:text-xs cursor-pointer transition inline-flex items-center justify-center gap-1"
                     >
-                      🔓 Выкуп (<span className="font-mono-num">$500</span>)
+                      <AppleEmoji emoji="📋" />
+                      <span>
+                        Справка ВЛК (<span className="font-mono-num">$500</span>)
+                      </span>
                     </button>
                   )}
                   {roomState.settings.mode === 'duel_restart' && roomState.round <= 20 && (
@@ -1646,19 +1770,16 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                       );
                     })}
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5">
                     <button
                       disabled={(me?.cash ?? 0) < 1000}
                       onClick={() => onPlayJackpot({ mode: 'DICE', faces: selectedFaces })}
-                      className="btn-emerald-3d active:translate-y-1 py-2 rounded-xl font-bold text-[11px] cursor-pointer"
+                      className="btn-emerald-3d active:translate-y-1 py-2 rounded-xl font-bold text-[11px] cursor-pointer inline-flex items-center justify-center gap-1"
                     >
-                      🎲 Ставка <span className="font-mono-num">{formatMoney(1000)}</span>
-                    </button>
-                    <button
-                      onClick={() => onPlayJackpot({ mode: 'ROULETTE' })}
-                      className="py-2 rounded-xl bg-[#F43F5E] hover:bg-rose-500 text-white font-bold text-[11px] cursor-pointer transition"
-                    >
-                      🔫 Рулетка <span className="font-mono-num">+{formatMoney(1500)}</span>
+                      <AppleEmoji emoji="🎲" />
+                      <span>
+                        Ставка <span className="font-mono-num">{formatMoney(1000)}</span>
+                      </span>
                     </button>
                     <button
                       onClick={() => onPlayJackpot({ skip: true })}
@@ -1813,19 +1934,28 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="text-center text-[10px] sm:text-[11px] font-semibold text-neutral-300 bg-[#0B0D14] border border-white/[0.08] rounded-lg py-1 px-2">
-                      ⏳ Сейчас торгуется:{' '}
-                      <b style={{ color: currentBidder?.color }} className="font-extrabold inline-flex items-center gap-1">
-                        {currentBidder ? (
-                          <>
-                            <PlayerAvatar avatar={currentBidder.avatar} />
-                            <span>{currentBidder.name}</span>
-                          </>
-                        ) : (
-                          '...'
+                    <div className="text-center text-[10px] sm:text-[11px] font-semibold text-neutral-300 bg-[#0B0D14] border border-white/[0.08] rounded-lg py-1 px-2 space-y-0.5">
+                      <div>
+                        ⏳ Сейчас торгуется:{' '}
+                        <b style={{ color: currentBidder?.color }} className="font-extrabold inline-flex items-center gap-1">
+                          {currentBidder ? (
+                            <>
+                              <PlayerAvatar avatar={currentBidder.avatar} />
+                              <span>{currentBidder.name}</span>
+                            </>
+                          ) : (
+                            '...'
+                          )}
+                        </b>{' '}
+                        (<span className="font-mono-num">{secLeft}с</span>)
+                      </div>
+                      {auc.initiatorId === myPlayerId &&
+                        auc.passedIds.includes(myPlayerId) &&
+                        auc.highestBidderId && (
+                          <div className="text-[9.5px] text-[#FDA4AF] font-semibold">
+                            Вы выставили лот и выбыли из торгов после чужой ставки
+                          </div>
                         )}
-                      </b>{' '}
-                      (<span className="font-mono-num">{secLeft}с</span>)
                     </div>
                   )}
                 </>
@@ -1978,7 +2108,10 @@ export const CenterStage: React.FC<CenterStageProps> = ({
         </div>
 
         {/* Скроллящийся лог с левыми цветными индикаторами и бейджами сумм */}
-        <div className="chat-scrollbar flex-1 min-h-0 overflow-y-auto space-y-1 sm:space-y-1.5 pr-1 text-[10.5px] sm:text-[12.5px] xl:text-[13px] leading-snug">
+        <div
+          data-testid="center-chat-logs"
+          className="chat-scrollbar flex-1 min-h-0 overflow-y-auto space-y-1 sm:space-y-1.5 pr-1 text-[10.5px] sm:text-[12.5px] xl:text-[13px] leading-snug"
+        >
           {filteredLogs.slice(-60).map((entry) => {
             const rawText = txt(entry.text, entry.cleanText, censored);
             const matchedPlayer =
@@ -1993,7 +2126,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
             const isDangerEvent =
               entry.type === 'RENT' ||
               entry.type === 'BANKRUPT' ||
-              /обезьянник|сизо|изолятор|приём|облава|тюрьм|скам|мфо|115-фз|додеп|штраф|долг/i.test(rawText);
+              /обезьянник|сизо|изолятор|приём|облава|тюрьм|тцк|бусик|бусификац|учебк|влк|повестк|скам|мфо|115-фз|додеп|штраф|долг/i.test(rawText);
 
             const accentClass = isGoldHeadline
               ? 'border-l-[3px] border-l-[#E5B869] bg-gradient-to-r from-[#E5B869]/14 via-[#141722]/75 to-transparent pl-2.5 pr-1.5 py-1 rounded-r-lg border-y border-r border-white/[0.04]'
@@ -2036,7 +2169,11 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                           : 'text-[#E2E8F0] font-medium'
                       }
                     >
-                      {renderColoredLogText(rawText, roomState.players)}
+                      {renderColoredLogText(
+                        rawText,
+                        roomState.players,
+                        matchedPlayer?.diceSkin ?? 'classic'
+                      )}
                     </span>
                   </div>
 
@@ -2047,10 +2184,10 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         key={em}
                         type="button"
                         onClick={() => onReactLog(entry.id, em)}
-                        className="hover:scale-125 transition text-[11px] leading-none px-0.5 cursor-pointer"
+                        className="hover:scale-125 transition text-[11px] leading-none px-0.5 cursor-pointer inline-flex items-center"
                         title={`Реакция ${em}`}
                       >
-                        {em}
+                        <AppleEmoji emoji={em} />
                       </button>
                     ))}
                   </div>
@@ -2065,7 +2202,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         onClick={() => onReactLog(entry.id, em)}
                         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-white/10 font-mono-num text-[10px] font-bold text-neutral-200 cursor-pointer"
                       >
-                        <span>{em}</span>
+                        <AppleEmoji emoji={em} />
                         <span>{cnt}</span>
                       </button>
                     ))}

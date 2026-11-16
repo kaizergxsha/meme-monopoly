@@ -1,4 +1,5 @@
 import React from 'react';
+import { AppleEmoji } from './AppleEmoji.tsx';
 
 export function isImageAvatar(avatar?: string | null): boolean {
   if (!avatar) return false;
@@ -41,5 +42,5 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
     );
   }
 
-  return className ? <span className={className}>{value}</span> : <>{value}</>;
+  return <AppleEmoji emoji={value} alt={alt} fill={fill} className={className} />;
 };

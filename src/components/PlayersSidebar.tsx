@@ -9,6 +9,7 @@ import {
 } from '../../shared/rules.ts';
 import { RoomState, TauntEvent } from '../../shared/types.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
+import { AppleEmoji } from './AppleEmoji.tsx';
 import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 interface PlayersSidebarProps {
@@ -209,7 +210,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
             setMenuAnchor(null);
             setConfirmSurrender(false);
           }}
-          className="fixed inset-0 bg-black/18 backdrop-blur-[1.5px] z-40 transition-opacity"
+          className="fixed inset-0 bg-black/18 backdrop-blur-[1.5px] z-30 transition-opacity"
         />
       )}
 
@@ -350,13 +351,21 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
 
                         <div className="flex items-center gap-1 shrink-0">
                           {p.inJail && (
-                            <span className="text-[10px]" title={`В СИЗО #13 (${p.jailTurns}/3)`}>
-                              ⛓️
+                            <span className="text-[11px] inline-flex items-center" title={`В Учебке (${p.jailTurns}/3)`}>
+                              <AppleEmoji emoji="🪖" />
+                            </span>
+                          )}
+                          {(p.reverseTurns ?? 0) > 0 && (
+                            <span
+                              className="px-1 py-[0.5px] rounded-full bg-purple-500/25 border border-purple-400/50 text-purple-200 text-[8.5px] font-mono-num font-bold"
+                              title={`Задний ход: ещё ${p.reverseTurns} бр.`}
+                            >
+                              ⏪×{p.reverseTurns}
                             </span>
                           )}
                           {p.shields > 0 && (
-                            <span className="text-[10px]" title={`Крыша ×${p.shields}`}>
-                              🛡️
+                            <span className="text-[11px] inline-flex items-center" title={`Крыша ×${p.shields}`}>
+                              <AppleEmoji emoji="🛡️" />
                             </span>
                           )}
                           {roomState.settings.mode === 'team2v2' && (
@@ -434,7 +443,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
 
                   {/* Индикатор открытого кредита */}
                   {!p.isBankrupt && p.credit && (() => {
-                    const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
+                    const defaultTerm = 10;
                     const totalTerm =
                       p.credit.takenAtRound !== undefined
                         ? Math.max(1, p.credit.dueRound - p.credit.takenAtRound)
@@ -609,7 +618,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
         {/* НИЖНИЙ ДОК HUD: VIP-ЛИМИТ БАНКА «КРЕДИТ» + ФИЗИЧЕСКИЕ DJ / STREAMDECK ПЭДЫ САУНДПАДА */}
         {me && !me.isBankrupt && roomState.status === 'PLAYING' && (() => {
           const myCredit = me.credit;
-          const defaultTerm = isSpeedRulesMode(roomState.settings) ? 6 : 8;
+          const defaultTerm = 10;
           const totalTerm = myCredit
             ? myCredit.takenAtRound !== undefined
               ? Math.max(1, myCredit.dueRound - myCredit.takenAtRound)
@@ -710,8 +719,9 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 gap-1 min-w-0">
-                  {TAUNTS.map((pad) => {
+                  {TAUNTS.map((pad, idx) => {
                     const isPlaying = activeTauntPadId === pad.id;
+                    const isOddLast = TAUNTS.length % 2 === 1 && idx === TAUNTS.length - 1;
                     return (
                       <button
                         key={pad.id}
@@ -725,6 +735,8 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                             : `${pad.label} (с озвучкой)`
                         }
                         className={`streamdeck-pad w-full min-w-0 py-1.5 pl-2.5 pr-1.5 rounded-xl overflow-hidden disabled:opacity-40 text-left flex items-center justify-between gap-1 cursor-pointer ${
+                          isOddLast ? 'col-span-2' : ''
+                        } ${
                           isPlaying ? 'animate-pad-playing !border-[#E5B869]/75' : ''
                         }`}
                       >
@@ -739,8 +751,9 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                           }}
                           className="pointer-events-none absolute left-0 inset-y-1 w-[3px] rounded-r-full"
                         />
-                        <span className="min-w-0 flex-1 text-[10px] font-bold text-[#F1F5F9] leading-[1.15] whitespace-normal break-words">
-                          {pad.emoji} {pad.label}
+                        <span className="min-w-0 flex-1 text-[8.5px] font-bold text-[#F1F5F9] leading-[1.1] whitespace-normal break-words flex items-center gap-0.5 tracking-tight">
+                          <AppleEmoji emoji={pad.emoji} />
+                          <span>{pad.label}</span>
                         </span>
                         <SoundpadEqIcon playing={isPlaying} accentHex={pad.ledHex} />
                       </button>

@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BOARD_CELLS,
   getCellGridPosition,
@@ -10,12 +11,15 @@ import {
   canBuildBranch,
   canMortgageCell,
   canSellBranch,
+  canUnmortgageCell,
   getMortgageValue,
+  getTokenWalkDurationMs,
   getUnmortgageCost,
   txt,
 } from '../../shared/rules.ts';
 import { BoardCellDef, RoomState, TradeSide } from '../../shared/types.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
+import { AppleEmoji } from './AppleEmoji.tsx';
 import { BoardTokensLayer } from './BoardTokensLayer.tsx';
 import { CellArtwork } from './CellArtwork.tsx';
 import { CenterStage, TradeDraftState } from './CenterStage.tsx';
@@ -124,9 +128,9 @@ function getSpecialPopoverMeta(
     case 'START':
       return { headerHex: '#E5B869', title, subtitle: 'Старт · Получка +$2 000', description };
     case 'JAIL':
-      return { headerHex: '#F43F5E', title, subtitle: 'Казённый бастион · СИЗО #13', description };
+      return { headerHex: '#F43F5E', title, subtitle: 'Полигон · Учебка', description };
     case 'POLICE':
-      return { headerHex: '#F43F5E', title, subtitle: 'Приём с мигалками', description };
+      return { headerHex: '#F43F5E', title, subtitle: 'Рейд ТЦК · Бусификация', description };
     case 'CHANCE':
       return { headerHex: '#10B981', title, subtitle: 'VIP-Лутбокс Фортуны', description };
     case 'TAX':
@@ -205,10 +209,29 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
     onChangeTradeDraft,
   } = props;
 
+  const [walkTick, setWalkTick] = useState(0);
+  useEffect(() => {
+    const ld = roomState.lastDice;
+    if (!ld) return;
+    const walkMs = getTokenWalkDurationMs(ld) + 220;
+    const remaining = ld.timestamp + walkMs - Date.now();
+    if (remaining <= 0) return;
+    const t = setTimeout(() => setWalkTick((v) => v + 1), remaining + 25);
+    return () => clearTimeout(t);
+  }, [roomState.lastDice]);
+
+  const isWalkingAfterRoll = Boolean(
+    roomState.lastDice &&
+      roomState.phase !== 'CHOOSE_SPEED_TARGET' &&
+      Date.now() - roomState.lastDice.timestamp < getTokenWalkDurationMs(roomState.lastDice) + 220 &&
+      walkTick >= 0
+  );
+
   const curPlayer = roomState.players[roomState.currentPlayerIndex];
   const isChoosingTarget =
     roomState.phase === 'CHOOSE_SPEED_TARGET' && curPlayer?.id === myPlayerId;
   const isChoosingPortalTarget =
+    !isWalkingAfterRoll &&
     roomState.phase === 'PORTAL' &&
     (curPlayer?.id === myPlayerId || roomState.portal?.playerId === myPlayerId);
   const portalHighlightSet = new Set(roomState.portal?.candidateCells || []);
@@ -236,19 +259,28 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
   const lastDiceTsRef = useRef<number>(0);
   const lastArrestTsRef = useRef<number>(0);
   const lastTransferIdRef = useRef<string | null>(null);
+  const activeTurnPlayerId = curPlayer?.id ?? '';
+  const [isMobileView, setIsMobileView] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 1024 : false
+  );
 
-  // Автозакрытие поповера при появлении важной фазы действия, чтобы не перекрывать центр
   useEffect(() => {
-    const curId = roomState.players[roomState.currentPlayerIndex]?.id;
+    const onResize = () => setIsMobileView(window.innerWidth < 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Автозакрытие поповера строго при СМЕНЕ фазы на важную фазу действия (не при каждом изменении кэша/филиалов)
+  useEffect(() => {
     const isMyActionPhase =
-      curId === myPlayerId &&
+      activeTurnPlayerId === myPlayerId &&
       ['BUY_DECISION', 'CHANCE', 'JACKPOT', 'PORTAL', 'CHOOSE_SPEED_TARGET', 'PENDING_DEBT'].includes(
         roomState.phase
       );
     if (isMyActionPhase || roomState.phase === 'AUCTION') {
       onSelectCell(null);
     }
-  }, [roomState.phase, roomState.currentPlayerIndex, myPlayerId, roomState.players, onSelectCell]);
+  }, [roomState.phase, activeTurnPlayerId, myPlayerId, onSelectCell]);
 
   // Микро-тряска доски при дубле / трипле
   useEffect(() => {
@@ -262,22 +294,36 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
     }
   }, [roomState.lastDice]);
 
-  // Мигание сирены и звук при отправке в Изолятор полицией
+  const [policeArrestFromCell, setPoliceArrestFromCell] = useState<number | null>(null);
+
+  // Мигание сирены и звук при отправке в Изолятор полицией (синхронно с доходом фишки до клетки ареста)
   useEffect(() => {
     const ts = roomState.lastPoliceArrestAt;
     if (!ts || ts === lastArrestTsRef.current) return;
     lastArrestTsRef.current = ts;
-    soundEngine.playSiren();
-    setPoliceFlash(true);
-    setBoardShake(true);
-    const t = setTimeout(() => {
+    const arrestEvt = roomState.lastPoliceArrest;
+    const delayMs =
+      arrestEvt && arrestEvt.timestamp === ts
+        ? Math.max(0, arrestEvt.walkDurationMs - 90)
+        : 0;
+    const startTimer = setTimeout(() => {
+      soundEngine.playSiren();
+      setPoliceFlash(true);
+      setBoardShake(true);
+      setPoliceArrestFromCell(arrestEvt?.fromCell ?? 30);
+    }, delayMs);
+    const endTimer = setTimeout(() => {
       setPoliceFlash(false);
       setBoardShake(false);
-    }, 2800);
-    return () => clearTimeout(t);
-  }, [roomState.lastPoliceArrestAt]);
+      setPoliceArrestFromCell(null);
+    }, delayMs + 2800);
+    return () => {
+      clearTimeout(startTimer);
+      clearTimeout(endTimer);
+    };
+  }, [roomState.lastPoliceArrestAt, roomState.lastPoliceArrest]);
 
-  // Летящий кэш-трансфер прямо над клеткой события
+  // Летящий кэш-трансфер прямо над клеткой события (строго ПОСЛЕ прихода фишки на клетку, не паля цель заранее)
   useEffect(() => {
     const tr = roomState.lastTransfer;
     if (!tr || tr.id === lastTransferIdRef.current) return;
@@ -288,16 +334,27 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
     const isIncomeForMe = tr.toId === myPlayerId;
     const isLossForMe = tr.fromId === myPlayerId;
     const prefix = isIncomeForMe ? '+' : isLossForMe ? '-' : tr.fromId === 'BANK' ? '+' : '💸 ';
-    setFlyTransfer({
-      id: tr.id,
-      label: `${prefix}$${formatDollar(tr.amount)}`,
-      isPositive: tr.fromId === 'BANK' || isIncomeForMe,
-      xPct: Math.min(88, Math.max(12, xPct)),
-      yPct: Math.min(88, Math.max(12, yPct)),
-    });
-    const t = setTimeout(() => setFlyTransfer(null), 1700);
-    return () => clearTimeout(t);
-  }, [roomState.lastTransfer, myPlayerId]);
+    const ld = roomState.lastDice;
+    const delayMs =
+      ld && Date.now() - ld.timestamp < 1500
+        ? Math.max(0, ld.timestamp + getTokenWalkDurationMs(ld) - Date.now())
+        : 0;
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    const showTimer = setTimeout(() => {
+      setFlyTransfer({
+        id: tr.id,
+        label: `${prefix}$${formatDollar(tr.amount)}`,
+        isPositive: tr.fromId === 'BANK' || isIncomeForMe,
+        xPct: Math.min(88, Math.max(12, xPct)),
+        yPct: Math.min(88, Math.max(12, yPct)),
+      });
+      hideTimer = setTimeout(() => setFlyTransfer(null), 1700);
+    }, delayMs);
+    return () => {
+      clearTimeout(showTimer);
+      if (hideTimer) clearTimeout(hideTimer);
+    };
+  }, [roomState.lastTransfer, roomState.lastDice, myPlayerId]);
 
   useEffect(() => {
     if (!isPopoverOpen) return;
@@ -309,7 +366,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
   }, [isPopoverOpen, onSelectCell]);
 
   useLayoutEffect(() => {
-    if (!isPopoverOpen || selectedCellId === null) {
+    if (!isPopoverOpen || selectedCellId === null || isMobileView) {
       setPopoverPos(null);
       return;
     }
@@ -325,15 +382,15 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
       const wrapRect = wrapEl.getBoundingClientRect();
       const cellRect = cellEl.getBoundingClientRect();
-      const popW = popEl.offsetWidth || 308;
+      const popW = popEl.offsetWidth || 312;
       const popH = popEl.offsetHeight || 320;
       const gap = 8;
-      const pad = 8;
+      const pad = 10;
 
-      const cLeft = cellRect.left - wrapRect.left;
-      const cTop = cellRect.top - wrapRect.top;
-      const cRight = cLeft + cellRect.width;
-      const cBottom = cTop + cellRect.height;
+      const cLeft = cellRect.left;
+      const cTop = cellRect.top;
+      const cRight = cellRect.right;
+      const cBottom = cellRect.bottom;
       const cMidX = cLeft + cellRect.width / 2;
       const cMidY = cTop + cellRect.height / 2;
 
@@ -369,29 +426,24 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
         }
       }
 
-      const minXWrap = pad;
-      const maxXWrap = Math.max(pad, wrapRect.width - popW - pad);
-      const minYWrap = pad;
-      const maxYWrap = Math.max(pad, wrapRect.height - popH - pad);
+      const minXView = pad;
+      const maxXView = Math.max(pad, window.innerWidth - popW - pad);
+      const minYView = pad;
+      const maxYView = Math.max(pad, window.innerHeight - popH - pad);
 
-      const minXView = pad - wrapRect.left;
-      const maxXView = window.innerWidth - pad - popW - wrapRect.left;
-      const minYView = pad - wrapRect.top;
-      const maxYView = window.innerHeight - pad - popH - wrapRect.top;
-
-      const minX = Math.max(minXWrap, minXView);
-      const maxX = Math.min(maxXWrap, maxXView);
-      const minY = Math.max(minYWrap, minYView);
-      const maxY = Math.min(maxYWrap, maxYView);
+      const minXWrap = Math.max(minXView, wrapRect.left + pad);
+      const maxXWrap = Math.min(maxXView, wrapRect.right - popW - pad);
+      const minYWrap = Math.max(minYView, wrapRect.top + pad);
+      const maxYWrap = Math.min(maxYView, wrapRect.bottom - popH - pad);
 
       const clampedX =
-        minX <= maxX
-          ? Math.min(Math.max(x, minX), maxX)
-          : Math.min(Math.max(x, minXView), Math.max(minXView, maxXView));
+        minXWrap <= maxXWrap
+          ? Math.min(Math.max(x, minXWrap), maxXWrap)
+          : Math.min(Math.max(x, minXView), maxXView);
       const clampedY =
-        minY <= maxY
-          ? Math.min(Math.max(y, minY), maxY)
-          : Math.min(Math.max(y, minYView), Math.max(minYView, maxYView));
+        minYWrap <= maxYWrap
+          ? Math.min(Math.max(y, minYWrap), maxYWrap)
+          : Math.min(Math.max(y, minYView), maxYView);
 
       setPopoverPos({
         cellId: selectedCellId,
@@ -403,7 +455,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
     updatePosition();
     window.addEventListener('resize', updatePosition);
     return () => window.removeEventListener('resize', updatePosition);
-  }, [isPopoverOpen, selectedCellId, roomState.cells, roomState.players]);
+  }, [isPopoverOpen, selectedCellId, isMobileView, roomState.cells, roomState.players]);
 
   const handleCellClick = (cellId: number) => {
     if (isChoosingTarget && roomState.validSpeedTargets.includes(cellId)) {
@@ -588,6 +640,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             const isTransportSector = !owner && def.type === 'CAR';
             const isUtilitySector = !owner && def.type === 'IT_UTILITY';
             const isChanceSector = def.type === 'CHANCE';
+            const isHoveredGroup = Boolean(hoveredGroupId && group?.id === hoveredGroupId);
 
             // Тёмный графит #13161F вместо белого + благородный тинт владельца и единая подсветка спец-активов
             const cellBgStyle: React.CSSProperties = {
@@ -618,10 +671,16 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 'radial-gradient(circle at 50% 42%, rgba(168, 85, 247, 0.24) 0%, #171226 68%, #0f121c 100%)';
             } else if (isTransportSector) {
               cellBgStyle.background =
-                'radial-gradient(circle at 50% 42%, rgba(100, 116, 139, 0.22) 0%, #141923 68%, #10131c 100%)';
+                'radial-gradient(circle at 50% 42%, rgba(126, 149, 184, 0.22) 0%, #141923 68%, #10131c 100%)';
             } else if (isUtilitySector) {
               cellBgStyle.background =
-                'radial-gradient(circle at 50% 42%, rgba(20, 184, 166, 0.2) 0%, #101c1e 68%, #10131c 100%)';
+                'radial-gradient(circle at 50% 42%, rgba(6, 182, 212, 0.22) 0%, #101c22 68%, #10131c 100%)';
+            }
+
+            // При наведении на монополию принудительно задаём мощное двойное свечение в inline boxShadow,
+            // чтобы оно НЕ перебивалось inline-тенью карточек, купленных другими игроками!
+            if (isHoveredGroup && group && !isSelected) {
+              cellBgStyle.boxShadow = `0 0 0 2px ${group.accentHex}, 0 0 0 3.5px rgba(243, 208, 130, 0.95), 0 0 26px ${group.accentHex}dd, 0 12px 26px rgba(0, 0, 0, 0.88), inset 0 0 22px ${group.accentHex}66`;
             }
 
             const medallionGlowHex = owner
@@ -678,8 +737,30 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             const isDimmedForTarget =
               isHighlightingTargets && !isPortalCandidate && !isValidSpeedTarget;
             const isCurrentPlayerCell =
-              roomState.status === 'PLAYING' && !!curPlayer && def.id === curPlayer.position;
-            const isHoveredGroup = Boolean(hoveredGroupId && group?.id === hoveredGroupId);
+              !isWalkingAfterRoll &&
+              roomState.status === 'PLAYING' &&
+              !!curPlayer &&
+              def.id === curPlayer.position;
+            const isDimmedForHoverGroup = Boolean(
+              hoveredGroupId &&
+                !isHoveredGroup &&
+                !isHighlightingTargets &&
+                !tradeDraft.open &&
+                !activeTr &&
+                !isSelected
+            );
+            const isPoliceStrobeCell =
+              policeFlash && (def.id === 10 || def.id === (policeArrestFromCell ?? 30));
+            const groupStripPadClass =
+              group && pos.side !== 'corner'
+                ? pos.side === 'top'
+                  ? 'pt-[6px] sm:pt-[8.5px] pb-[1.5px] sm:pb-[2.5px] px-[1.5px] sm:px-[2.5px]'
+                  : pos.side === 'bottom'
+                  ? 'pb-[6px] sm:pb-[8.5px] pt-[1.5px] sm:pt-[2.5px] px-[1.5px] sm:px-[2.5px]'
+                  : pos.side === 'left'
+                  ? 'pl-[6px] sm:pl-[8.5px] pr-[1.5px] sm:pr-[2.5px] py-[1.5px] sm:py-[2.5px]'
+                  : 'pr-[6px] sm:pr-[8.5px] pl-[1.5px] sm:pl-[2.5px] py-[1.5px] sm:py-[2.5px]'
+                : 'p-[1.5px] sm:p-[2.5px]';
 
             return (
               <div
@@ -697,9 +778,13 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     ? 'opacity-45 brightness-75'
                     : isDimmedForTarget
                     ? 'opacity-45 brightness-75'
+                    : isDimmedForHoverGroup
+                    ? 'opacity-50 brightness-75'
                     : ''
                 } ${
-                  isValidSpeedTarget
+                  isPoliceStrobeCell
+                    ? 'ring-[3px] ring-[#F43F5E] shadow-[0_0_30px_rgba(244,63,94,0.95),0_0_24px_rgba(59,130,246,0.8)] z-30 scale-[1.04]'
+                    : isValidSpeedTarget
                     ? 'ring-[3px] ring-fuchsia-400 shadow-[0_0_26px_rgba(232,121,249,0.9),inset_0_0_18px_rgba(217,70,239,0.45)] scale-[1.04] z-30'
                     : isChoosingPortalTarget && isPortalCandidate
                     ? portalHighlightSet.size <= 8
@@ -712,7 +797,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     : isSelected
                     ? 'ring-2 ring-[#E5B869] shadow-[0_0_24px_rgba(229,184,105,0.48),0_14px_28px_rgba(0,0,0,0.8)] z-30 scale-[1.06] -translate-y-1'
                     : isHoveredGroup
-                    ? 'ring-2 ring-[#E5B869]/70 shadow-[0_0_16px_rgba(229,184,105,0.3)] z-20 brightness-110'
+                    ? 'z-30 scale-[1.055] -translate-y-0.5 brightness-115'
                     : isCurrentPlayerCell
                     ? 'ring-2 ring-[#E5B869] shadow-[0_0_20px_rgba(229,184,105,0.35)] z-20 hover:scale-[1.03] hover:-translate-y-0.5'
                     : rt && rt.branches > 0
@@ -720,6 +805,17 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     : 'hover:scale-[1.03] hover:-translate-y-0.5 hover:z-20 hover:shadow-[0_10px_22px_rgba(0,0,0,0.65)]'
                 }`}
               >
+                {/* Яркая внутренняя подсветка монополии при наведении (отлично читается даже поверх чужой заливки владельца!) */}
+                {isHoveredGroup && group && (
+                  <div
+                    style={{
+                      borderColor: group.accentHex,
+                      background: `radial-gradient(circle at 50% 50%, ${group.accentHex}38 0%, transparent 72%)`,
+                      boxShadow: `inset 0 0 16px ${group.accentHex}88`,
+                    }}
+                    className={`pointer-events-none absolute inset-0 z-25 border-2 ${cornerRadiusClass}`}
+                  />
+                )}
                 {/* Чёткий неоновый маркер владельца на внутренней грани купленной клетки */}
                 {owner && pos.side !== 'corner' && (
                   <div
@@ -727,7 +823,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                       backgroundColor: owner.color,
                       boxShadow: `0 0 10px ${owner.color}`,
                     }}
-                    className={`pointer-events-none absolute z-10 ${
+                    className={`pointer-events-none absolute z-15 ${
                       pos.side === 'top'
                         ? 'bottom-0 left-0 right-0 h-[3px]'
                         : pos.side === 'bottom'
@@ -738,21 +834,26 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     }`}
                   />
                 )}
-                {/* Тонкий неоновый индикатор монополии со стороны плашки */}
+                {/* Выразительная фрезерованная LED-плашка монополии (всегда хранит истинный цвет отрасли!) */}
                 {group && pos.side !== 'corner' && (
                   <div
                     style={{
-                      backgroundColor: group.accentHex,
-                      boxShadow: `0 0 8px ${group.accentHex}88`,
+                      background:
+                        pos.side === 'top' || pos.side === 'bottom'
+                          ? `linear-gradient(180deg, color-mix(in srgb, ${group.accentHex} 84%, #ffffff) 0%, ${group.accentHex} 52%, color-mix(in srgb, ${group.accentHex} 76%, #05070c) 100%)`
+                          : `linear-gradient(90deg, color-mix(in srgb, ${group.accentHex} 84%, #ffffff) 0%, ${group.accentHex} 52%, color-mix(in srgb, ${group.accentHex} 76%, #05070c) 100%)`,
+                      boxShadow: isHoveredGroup
+                        ? `0 0 14px ${group.accentHex}, inset 0 1px 0 rgba(255,255,255,0.75)`
+                        : `0 0 10px ${group.accentHex}99, inset 0 1px 0 rgba(255,255,255,0.48)`,
                     }}
-                    className={`pointer-events-none absolute z-10 opacity-90 ${
+                    className={`pointer-events-none absolute z-20 transition-all ${
                       pos.side === 'top'
-                        ? 'top-0 left-1 right-1 h-[2px] rounded-full'
+                        ? 'top-0 left-0 right-0 h-[5px] sm:h-[7px] rounded-t-[2.5px] sm:rounded-t-[3.5px] border-b border-[#06080D]/95'
                         : pos.side === 'bottom'
-                        ? 'bottom-0 left-1 right-1 h-[2px] rounded-full'
+                        ? 'bottom-0 left-0 right-0 h-[5px] sm:h-[7px] rounded-b-[2.5px] sm:rounded-b-[3.5px] border-t border-[#06080D]/95'
                         : pos.side === 'left'
-                        ? 'left-0 top-1 bottom-1 w-[2px] rounded-full'
-                        : 'right-0 top-1 bottom-1 w-[2px] rounded-full'
+                        ? 'left-0 top-0 bottom-0 w-[5px] sm:w-[7px] rounded-l-[2.5px] sm:rounded-l-[3.5px] border-r border-[#06080D]/95'
+                        : 'right-0 top-0 bottom-0 w-[5px] sm:w-[7px] rounded-r-[2.5px] sm:rounded-r-[3.5px] border-l border-[#06080D]/95'
                     }`}
                   />
                 )}
@@ -798,17 +899,30 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                         background: rt?.isMortgaged
                           ? 'linear-gradient(180deg, #3f3f46 0%, #27272a 100%)'
                           : `linear-gradient(180deg, color-mix(in srgb, ${ledColor} 88%, #ffffff) 0%, color-mix(in srgb, ${ledColor} 76%, #07090e) 100%)`,
-                        boxShadow: rt?.isMortgaged
+                        boxShadow: isHoveredGroup
+                          ? `0 0 0 1.5px ${group.accentHex}, 0 0 18px ${group.accentHex}, 0 4px 10px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.65)`
+                          : rt?.isMortgaged
                           ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 2px 6px rgba(0,0,0,0.6)'
                           : `0 0 14px ${ledColor}55, 0 3px 8px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.42)`,
                         textShadow: '0 1px 2px rgba(0,0,0,0.92), 0 0 2px rgba(0,0,0,0.95)',
                       }}
-                      className={`pointer-events-none absolute ${outerTabPosClass} flex items-center justify-center gap-0.5 font-mono-num text-[7px] sm:text-[10.5px] xl:text-[11.5px] font-bold text-[#F8FAFC] tracking-[-0.04em] sm:tracking-tight leading-none whitespace-nowrap animate-tab-flip ${
+                      className={`pointer-events-none absolute ${outerTabPosClass} flex items-center justify-center gap-0.5 font-mono-num text-[7px] sm:text-[10.5px] xl:text-[11.5px] font-bold text-[#F8FAFC] tracking-[-0.04em] sm:tracking-tight leading-none whitespace-nowrap animate-tab-flip transition-transform ${
+                        isHoveredGroup ? 'scale-105 z-30' : ''
+                      } ${
                         owner && !rt?.isMortgaged
                           ? 'border border-white/65 ring-1 ring-black/40'
                           : 'border border-white/25 opacity-95'
                       }`}
                     >
+                      {owner && (
+                        <span
+                          style={{
+                            backgroundColor: group.accentHex,
+                            boxShadow: `0 0 5px ${group.accentHex}`,
+                          }}
+                          className="hidden sm:inline-block w-1.5 h-1.5 rounded-full border border-black/70 shrink-0"
+                        />
+                      )}
                       {outerTabMobileText !== outerTabText ? (
                         <>
                           <span className="sm:hidden">{outerTabMobileText}</span>
@@ -898,7 +1012,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                   </div>
                 ) : (
                   /* Единый полноразмерный Dark Luxury слот иллюстрации для всех 36 боковых карточек */
-                  <div className="w-full h-full p-[1.5px] sm:p-[2.5px] flex items-center justify-center overflow-hidden min-w-0 min-h-0">
+                  <div className={`w-full h-full ${groupStripPadClass} flex items-center justify-center overflow-hidden min-w-0 min-h-0`}>
                     <div
                       style={{
                         boxShadow: `inset 0 2px 6px rgba(0,0,0,0.72), 0 1px 0 rgba(255,255,255,0.05)`,
@@ -930,11 +1044,13 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
           <CenterStage {...props} />
         </div>
 
-        {/* Слой анимированных фишек поверх доски (с пошаговым скольжением и прыжками) */}
+        {/* Слой анимированных фишек поверх доски (с пошаговым скольжением, задним ходом и арестом в СИЗО) */}
         <BoardTokensLayer
           players={roomState.players}
           currentPlayerId={curPlayer?.id}
           isPlaying={roomState.status === 'PLAYING'}
+          lastDice={roomState.lastDice}
+          lastPoliceArrest={roomState.lastPoliceArrest}
         />
 
         {/* Летящий кэш-трансфер прямо над клеткой */}
@@ -1038,9 +1154,6 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             ];
 
             const isMine = selectedBuyable && selectedRt?.ownerId === myPlayerId;
-            const myPlayer = isMine
-              ? roomState.players.find((p) => p.id === myPlayerId)
-              : undefined;
             const buildCheck = isMine
               ? canBuildBranch(roomState, myPlayerId, selectedDef.id)
               : null;
@@ -1050,8 +1163,11 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             const mortgageCheck = isMine
               ? canMortgageCell(roomState, myPlayerId, selectedDef.id)
               : null;
+            const unmortgageCheck = isMine
+              ? canUnmortgageCell(roomState, myPlayerId, selectedDef.id)
+              : null;
             const unmortgageCost = getUnmortgageCost(selectedDef.id);
-            const canUnmortgage = (myPlayer?.cash ?? 0) >= unmortgageCost;
+            const canUnmortgage = Boolean(unmortgageCheck?.ok);
             const isMyTurn = curPlayer?.id === myPlayerId;
             const showAuctionBtn = roomState.settings.auctionsEnabled && !retro;
             const canAuctionMortgaged =
@@ -1062,487 +1178,524 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             const branchCostVal =
               selectedDef.branchCost ?? selectedGroup?.branchCost ?? 0;
 
-            return (
-              <>
+            const cardContent = (
+              <div
+                ref={popoverRef}
+                role="dialog"
+                aria-label={headerTitle}
+                onClick={(e) => e.stopPropagation()}
+                style={
+                  isMobileView
+                    ? {
+                        boxShadow: `0 32px 80px rgba(0,0,0,0.92), 0 0 34px ${headerHex}24, inset 0 1px 0 rgba(255,255,255,0.1)`,
+                      }
+                    : {
+                        left:
+                          popoverPos?.cellId === selectedDef.id
+                            ? popoverPos.left
+                            : 0,
+                        top:
+                          popoverPos?.cellId === selectedDef.id
+                            ? popoverPos.top
+                            : 0,
+                        visibility:
+                          popoverPos?.cellId === selectedDef.id
+                            ? 'visible'
+                            : 'hidden',
+                        boxShadow: `0 32px 80px rgba(0,0,0,0.92), 0 0 34px ${headerHex}24, inset 0 1px 0 rgba(255,255,255,0.1)`,
+                      }
+                }
+                className={
+                  isMobileView
+                    ? 'w-full max-w-[348px] max-h-[88dvh] flex flex-col bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.1] overflow-hidden animate-action-card'
+                    : 'fixed w-[312px] max-h-[calc(100dvh-20px)] flex flex-col bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.08] overflow-hidden z-[65] animate-action-card'
+                }
+              >
+                {/* Коллекционная VIP-шапка карточки с глубоким градиентом монополии, сеткой и крупным 3D-артом */}
                 <div
-                  className="fixed inset-0 z-30 max-lg:bg-black/60 max-lg:backdrop-blur-[2px]"
-                  onClick={() => onSelectCell(null)}
-                  aria-hidden="true"
-                />
-                <div
-                  ref={popoverRef}
-                  role="dialog"
-                  aria-label={headerTitle}
-                  onClick={(e) => e.stopPropagation()}
                   style={{
-                    left:
-                      popoverPos?.cellId === selectedDef.id
-                        ? popoverPos.left
-                        : 0,
-                    top:
-                      popoverPos?.cellId === selectedDef.id
-                        ? popoverPos.top
-                        : 0,
-                    visibility:
-                      popoverPos?.cellId === selectedDef.id
-                        ? 'visible'
-                        : 'hidden',
-                    boxShadow: `0 32px 80px rgba(0,0,0,0.92), 0 0 34px ${headerHex}24, inset 0 1px 0 rgba(255,255,255,0.1)`,
+                    background: `linear-gradient(135deg, color-mix(in srgb, ${headerHex} 54%, #0f1117) 0%, #141824 66%, #0f1117 100%)`,
+                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 24px rgba(0,0,0,0.45)`,
                   }}
-                  className="absolute w-[308px] max-lg:!fixed max-lg:!left-1/2 max-lg:!top-1/2 max-lg:!-translate-x-1/2 max-lg:!-translate-y-1/2 max-lg:w-[min(92vw,340px)] max-lg:max-h-[84dvh] max-lg:overflow-y-auto bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.08] overflow-hidden z-40 max-lg:z-50 animate-action-card"
+                  className="shrink-0 px-4 py-3 relative border-b border-white/[0.08] overflow-hidden"
                 >
-                  {/* Коллекционная VIP-шапка карточки с глубоким градиентом монополии, сеткой и крупным 3D-артом */}
-                  <div
-                    style={{
-                      background: `linear-gradient(135deg, color-mix(in srgb, ${headerHex} 54%, #0f1117) 0%, #141824 66%, #0f1117 100%)`,
-                      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 24px rgba(0,0,0,0.45)`,
-                    }}
-                    className="px-4 py-3.5 relative border-b border-white/[0.08] overflow-hidden"
+                  {/* Тонкая геометрическая сетка на фоне шапки */}
+                  <svg
+                    viewBox="0 0 308 128"
+                    preserveAspectRatio="none"
+                    className="pointer-events-none absolute inset-0 w-full h-full opacity-35"
                   >
-                    {/* Тонкая геометрическая сетка на фоне шапки */}
-                    <svg
-                      viewBox="0 0 308 128"
-                      preserveAspectRatio="none"
-                      className="pointer-events-none absolute inset-0 w-full h-full opacity-35"
-                    >
-                      <defs>
-                        <pattern
-                          id={`pop-grid-${selectedDef.id}`}
-                          width="14"
-                          height="14"
-                          patternUnits="userSpaceOnUse"
-                        >
-                          <path
-                            d="M 14 0 L 0 0 0 14"
-                            fill="none"
-                            stroke={headerHex}
-                            strokeOpacity="0.28"
-                            strokeWidth="0.6"
-                          />
-                        </pattern>
-                      </defs>
-                      <rect width="308" height="128" fill={`url(#pop-grid-${selectedDef.id})`} />
-                      <circle
-                        cx="264"
-                        cy="26"
-                        r="54"
-                        fill="none"
-                        stroke="#E5B869"
-                        strokeOpacity="0.2"
-                        strokeDasharray="3 3"
-                      />
-                    </svg>
-
-                    <button
-                      type="button"
-                      onClick={() => onSelectCell(null)}
-                      aria-label="Закрыть карточку"
-                      className="absolute top-2.5 right-2.5 z-20 w-7 h-7 rounded-full bg-[#090B10]/70 hover:bg-[#F43F5E] border border-white/15 text-neutral-200 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer transition"
-                    >
-                      ✕
-                    </button>
-
-                    <div className="relative z-10">
-                      <div className="pr-8 mb-2.5">
-                        {catBadge ? (
-                          <div className="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-xl bg-gradient-to-r from-[#0A0C12]/90 to-[#161A26]/90 border border-[#E5B869]/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] text-[10px] font-bold text-[#F3D082] leading-tight whitespace-normal break-words">
-                            <span className="shrink-0">{catBadge.icon}</span>
-                            <span className="whitespace-normal break-words text-[#F8FAFC]">
-                              {headerSubtitle}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="inline-flex items-center max-w-full px-2.5 py-1 rounded-xl bg-[#0A0C12]/85 border border-white/15 text-[10px] text-[#E5B869] font-bold uppercase tracking-wider leading-tight whitespace-normal break-words">
-                            {headerSubtitle}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        {/* Крупная детализированная Dark Luxury 3D-витрина иллюстрации */}
-                        <div
-                          style={{
-                            borderColor: `${headerHex}80`,
-                            boxShadow: `0 0 24px ${headerHex}42, 0 10px 22px rgba(0,0,0,0.78), inset 0 2px 8px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.18)`,
-                            background: `radial-gradient(circle at 50% 45%, color-mix(in srgb, ${headerHex} 28%, #151a28) 0%, #090B11 80%)`,
-                          }}
-                          className="relative w-[82px] h-[82px] rounded-2xl border p-1.5 shrink-0 flex items-center justify-center overflow-hidden"
-                        >
-                          <div className="pointer-events-none absolute inset-x-2 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/35 to-transparent" />
-                          <div
-                            style={{ filter: `drop-shadow(0 4px 10px ${headerHex}66)` }}
-                            className="w-full h-full flex items-center justify-center"
-                          >
-                            <CellArtwork
-                              cellId={selectedDef.id}
-                              side="corner"
-                              censored={censored}
-                              russianRoulette={roomState.settings.russianRoulette}
-                              className="w-full h-full"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="min-w-0 flex-1 space-y-1.5">
-                          <div
-                            style={{ textShadow: '0 2px 6px rgba(0,0,0,0.65)' }}
-                            className="font-display text-[14.5px] font-bold text-[#F8FAFC] leading-[1.22] whitespace-normal break-words"
-                          >
-                            {headerTitle}
-                          </div>
-                          {selectedBuyable && selectedDef.price !== undefined && (
-                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#090B10]/80 border border-white/10 text-[10.5px] font-semibold text-[#CBD5E1]">
-                              <span>Цена:</span>
-                              <span className="font-mono-num font-bold text-[#F3D082]">
-                                ${formatDollar(selectedDef.price)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Тело VIP-актива */}
-                  <div className="px-4 py-3.5 text-[12px] space-y-3">
-                    {/* Закрытый инсайд / мемная цитата */}
-                    <div
-                      style={{ borderLeftColor: '#E5B869' }}
-                      className="relative overflow-hidden rounded-xl bg-[#0A0C12]/95 border border-white/[0.06] border-l-[3px] px-3 py-2.5 text-[11.5px] text-[#E2E8F0] leading-[1.45] shadow-inner"
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="pointer-events-none select-none absolute -top-2 right-2 font-serif text-[44px] leading-none text-[#E5B869]/12"
+                    <defs>
+                      <pattern
+                        id={`pop-grid-${selectedDef.id}`}
+                        width="14"
+                        height="14"
+                        patternUnits="userSpaceOnUse"
                       >
-                        ”
-                      </span>
-                      <div className="relative z-10 italic text-[#F1F5F9]/95">
-                        «{bodyDescription}»
-                      </div>
-                      {mechanicsHint && (
-                        <div className="relative z-10 not-italic text-[10px] text-[#94A3B8] mt-2 pt-1.5 border-t border-white/[0.05] font-semibold">
-                          ⚙️ {mechanicsHint}
+                        <path
+                          d="M 14 0 L 0 0 0 14"
+                          fill="none"
+                          stroke={headerHex}
+                          strokeOpacity="0.28"
+                          strokeWidth="0.6"
+                        />
+                      </pattern>
+                    </defs>
+                    <rect width="308" height="128" fill={`url(#pop-grid-${selectedDef.id})`} />
+                    <circle
+                      cx="264"
+                      cy="26"
+                      r="54"
+                      fill="none"
+                      stroke="#E5B869"
+                      strokeOpacity="0.2"
+                      strokeDasharray="3 3"
+                    />
+                  </svg>
+
+                  <button
+                    type="button"
+                    onClick={() => onSelectCell(null)}
+                    aria-label="Закрыть карточку"
+                    className="absolute top-2.5 right-2.5 z-20 w-7 h-7 rounded-full bg-[#090B10]/70 hover:bg-[#F43F5E] border border-white/15 text-neutral-200 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer transition"
+                  >
+                    ✕
+                  </button>
+
+                  <div className="relative z-10">
+                    <div className="pr-8 mb-2">
+                      {catBadge ? (
+                        <div className="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-xl bg-gradient-to-r from-[#0A0C12]/90 to-[#161A26]/90 border border-[#E5B869]/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] text-[10px] font-bold text-[#F3D082] leading-tight whitespace-normal break-words">
+                          <span className="shrink-0 inline-flex items-center">
+                            <AppleEmoji emoji={catBadge.icon} />
+                          </span>
+                          <span className="whitespace-normal break-words text-[#F8FAFC]">
+                            {headerSubtitle}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center max-w-full px-2.5 py-1 rounded-xl bg-[#0A0C12]/85 border border-white/15 text-[10px] text-[#E5B869] font-bold uppercase tracking-wider leading-tight whitespace-normal break-words">
+                          {headerSubtitle}
                         </div>
                       )}
                     </div>
 
-                    {/* Швейцарская таблица ренты */}
-                    {selectedDef.type === 'CAR' && (
-                      <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
-                        {carLabels.map((label, idx) => {
-                          const active = activeRentIdx === idx;
-                          const isTopTier = idx === carLabels.length - 1;
-                          return (
-                            <div
-                              key={label}
-                              className={`flex items-center justify-between gap-2 py-1.5 text-[11.5px] ${
-                                active
-                                  ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 shadow-[0_0_14px_rgba(16,185,129,0.18)] text-[#6EE7B7] font-bold'
-                                  : isTopTier
-                                  ? 'text-[#E5B869] font-semibold'
-                                  : 'text-[#CBD5E1]'
-                              }`}
-                            >
-                              <span>{isTopTier ? `${label} ★` : label}</span>
-                              <span
-                                className={`font-mono-num font-bold ${
-                                  active
-                                    ? 'text-[#6EE7B7]'
-                                    : isTopTier
-                                    ? 'text-[#E5B869]'
-                                    : 'text-[#F8FAFC]'
-                                }`}
-                              >
-                                <span className="opacity-55 mr-0.5">$</span>
-                                {formatDollar(rents[idx] ?? 0)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {selectedDef.type === 'IT_UTILITY' && (
-                      <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
-                        {itLabels.map((label, idx) => {
-                          const active = activeRentIdx === idx;
-                          const mult = rents[idx] ?? (idx === 0 ? 100 : 250);
-                          const isTopTier = idx === 1;
-                          return (
-                            <div
-                              key={label}
-                              className={`flex items-center justify-between gap-2 py-1.5 text-[11.5px] ${
-                                active
-                                  ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 shadow-[0_0_14px_rgba(16,185,129,0.18)] text-[#6EE7B7] font-bold'
-                                  : isTopTier
-                                  ? 'text-[#E5B869] font-semibold'
-                                  : 'text-[#CBD5E1]'
-                              }`}
-                            >
-                              <span>{isTopTier ? `${label} ★` : label}</span>
-                              <span
-                                className={`inline-flex items-center gap-1.5 font-mono-num font-bold ${
-                                  active
-                                    ? 'text-[#6EE7B7]'
-                                    : isTopTier
-                                    ? 'text-[#E5B869]'
-                                    : 'text-[#F8FAFC]'
-                                }`}
-                              >
-                                <MiniDicePair />
-                                <span>×{mult}</span>
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {selectedDef.type === 'PROPERTY' && (
-                      <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
-                        {propLabels.map((label, idx) => {
-                          const active = activeRentIdx === idx;
-                          const isMonopolyRow = idx === 5;
-                          return (
-                            <div
-                              key={label}
-                              className={`flex items-center justify-between gap-2 py-1.5 text-[11.5px] ${
-                                active
-                                  ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/45 shadow-[0_0_16px_rgba(16,185,129,0.22)] text-[#6EE7B7] font-bold'
-                                  : isMonopolyRow
-                                  ? 'text-[#E5B869] font-bold'
-                                  : idx % 2 === 1
-                                  ? 'bg-white/[0.015] text-[#CBD5E1]'
-                                  : 'text-[#CBD5E1]'
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                {active && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shadow-[0_0_6px_#10B981]" />
-                                )}
-                                <span>{label}</span>
-                              </span>
-                              <span
-                                className={`font-mono-num font-bold ${
-                                  active
-                                    ? 'text-[#6EE7B7]'
-                                    : isMonopolyRow
-                                    ? 'text-[#E5B869]'
-                                    : 'text-[#F8FAFC]'
-                                }`}
-                              >
-                                <span className="opacity-55 mr-0.5">$</span>
-                                {formatDollar(rents[idx] ?? 0)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Цены покупки / залога / выкупа / постройки */}
-                    {selectedBuyable && (
-                      <div className="rounded-xl bg-[#0B0D14]/55 border border-white/[0.04] px-2.5 py-1 divide-y divide-white/[0.04] text-[11.5px]">
-                        <div className="flex items-center justify-between gap-2 py-1">
-                          <span className="text-[#94A3B8]">Покупка актива</span>
-                          <span className="font-mono-num font-semibold text-[#F8FAFC]">
-                            <span className="text-[#64748B] mr-0.5">$</span>
-                            {formatDollar(selectedDef.price ?? 0)}
-                          </span>
+                    <div className="flex items-center gap-3">
+                      {/* Крупная детализированная Dark Luxury 3D-витрина иллюстрации */}
+                      <div
+                        style={{
+                          borderColor: `${headerHex}80`,
+                          boxShadow: `0 0 24px ${headerHex}42, 0 10px 22px rgba(0,0,0,0.78), inset 0 2px 8px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.18)`,
+                          background: `radial-gradient(circle at 50% 45%, color-mix(in srgb, ${headerHex} 28%, #151a28) 0%, #090B11 80%)`,
+                        }}
+                        className="relative w-[82px] h-[82px] rounded-2xl border p-1.5 shrink-0 flex items-center justify-center overflow-hidden"
+                      >
+                        <div className="pointer-events-none absolute inset-x-2 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+                        <div
+                          style={{ filter: `drop-shadow(0 4px 10px ${headerHex}66)` }}
+                          className="w-full h-full flex items-center justify-center"
+                        >
+                          <CellArtwork
+                            cellId={selectedDef.id}
+                            side="corner"
+                            censored={censored}
+                            russianRoulette={roomState.settings.russianRoulette}
+                            className="w-full h-full"
+                          />
                         </div>
-                        <div className="flex items-center justify-between gap-2 py-1">
-                          <span className="text-[#94A3B8]">Залог в банк</span>
-                          <span className="font-mono-num font-semibold text-[#F8FAFC]">
-                            <span className="text-[#64748B] mr-0.5">$</span>
-                            {formatDollar(getMortgageValue(selectedDef.id))}
-                          </span>
+                      </div>
+
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div
+                          style={{ textShadow: '0 2px 6px rgba(0,0,0,0.65)' }}
+                          className="font-display text-[14.5px] font-bold text-[#F8FAFC] leading-[1.22] whitespace-normal break-words"
+                        >
+                          {headerTitle}
                         </div>
-                        <div className="flex items-center justify-between gap-2 py-1">
-                          <span className="text-[#94A3B8]">Выкуп залога</span>
-                          <span className="font-mono-num font-semibold text-[#F8FAFC]">
-                            <span className="text-[#64748B] mr-0.5">$</span>
-                            {formatDollar(unmortgageCost)}
-                          </span>
-                        </div>
-                        {selectedDef.type === 'PROPERTY' && branchCostVal > 0 && (
-                          <div className="flex items-center justify-between gap-2 py-1">
-                            <span className="text-[#94A3B8]">Постройка филиала ★</span>
-                            <span className="font-mono-num font-semibold text-[#E5B869]">
-                              <span className="opacity-65 mr-0.5">$</span>
-                              {formatDollar(branchCostVal)}
+                        {selectedBuyable && selectedDef.price !== undefined && (
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#090B10]/80 border border-white/10 text-[10.5px] font-semibold text-[#CBD5E1]">
+                            <span>Цена:</span>
+                            <span className="font-mono-num font-bold text-[#F3D082]">
+                              ${formatDollar(selectedDef.price)}
                             </span>
                           </div>
                         )}
                       </div>
-                    )}
-
-                    {/* Размер налога для налоговых клеток */}
-                    {!selectedBuyable &&
-                      selectedDef.type === 'TAX' &&
-                      selectedDef.taxAmount !== undefined && (
-                        <div className="rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/30 px-3 py-2 flex items-center justify-between gap-2">
-                          <span className="text-[#FDA4AF] font-semibold">Штраф / Списание</span>
-                          <span className="font-mono-num font-bold text-[#F43F5E] text-sm">
-                            -${formatDollar(selectedDef.taxAmount)}
-                          </span>
-                        </div>
-                      )}
-
-                    {/* Статус владельца и кнопки управления своим активом */}
-                    <div className="border-t border-white/10 pt-2.5 space-y-2">
-                      {selectedBuyable ? (
-                        selectedOwner ? (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="inline-flex items-center gap-1.5 min-w-0">
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-white/25"
-                                style={{ backgroundColor: selectedOwner.color }}
-                              />
-                              <span className="truncate font-semibold text-white">
-                                {selectedOwner.name}
-                              </span>
-                            </span>
-                            {selectedRt?.isMortgaged && (
-                              <span className="shrink-0 text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">
-                                🔒{' '}
-                                {selectedRt.mortgageRoundsLeft
-                                  ? `${selectedRt.mortgageRoundsLeft} р.`
-                                  : 'В залоге'}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 text-[#a1a1aa]">
-                            <span className="w-2 h-2 rounded-full bg-zinc-600 shrink-0" />
-                            <span>Свободное поле</span>
-                          </div>
-                        )
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-[#a1a1aa]">
-                          <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{ backgroundColor: headerHex }}
-                          />
-                          <span>Специальная клетка</span>
-                        </div>
-                      )}
-
-                      {isMine && selectedRt && (
-                        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-                          {!selectedRt.isMortgaged ? (
-                            <>
-                              {selectedDef.type === 'PROPERTY' && (
-                                <button
-                                  type="button"
-                                  disabled={!buildCheck?.ok}
-                                  title={
-                                    buildCheck?.reason ??
-                                    `Построить филиал ($ ${formatDollar(branchCostVal)})`
-                                  }
-                                  onClick={() => {
-                                    soundEngine.playBuild();
-                                    props.onBuildBranch(selectedDef.id);
-                                  }}
-                                  className="btn-emerald-3d px-2 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer"
-                                >
-                                  + Филиал ★
-                                </button>
-                              )}
-                              {selectedDef.type === 'PROPERTY' &&
-                                selectedRt.branches > 0 && (
-                                  <button
-                                    type="button"
-                                    disabled={!sellCheck?.ok}
-                                    title={
-                                      sellCheck?.reason ??
-                                      'Продать филиал (50% стоимости)'
-                                    }
-                                    onClick={() => props.onSellBranch(selectedDef.id)}
-                                    className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-[#E5B869]/20 hover:bg-[#E5B869]/35 border border-[#E5B869]/50 text-[#F3D082] transition cursor-pointer disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed"
-                                  >
-                                    - Филиал
-                                  </button>
-                                )}
-                              <button
-                                type="button"
-                                disabled={!mortgageCheck?.ok}
-                                title={
-                                  mortgageCheck?.reason ??
-                                  `Заложить за $ ${formatDollar(
-                                    getMortgageValue(selectedDef.id)
-                                  )}`
-                                }
-                                onClick={() => props.onMortgage(selectedDef.id)}
-                                className={`px-2 py-1.5 rounded-lg text-[11px] font-bold leading-tight bg-[#E5B869]/15 hover:bg-[#E5B869]/28 border border-[#E5B869]/55 text-[#F3D082] hover:text-white shadow-sm transition cursor-pointer disabled:bg-white/5 disabled:border-white/10 disabled:text-zinc-500 disabled:shadow-none disabled:cursor-not-allowed ${
-                                  selectedDef.type !== 'PROPERTY' ||
-                                  selectedRt.branches > 0
-                                    ? 'col-span-2'
-                                    : ''
-                                }`}
-                              >
-                                🔒 Заложить (<span className="font-mono-num">+${formatDollar(getMortgageValue(selectedDef.id))}</span>)
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                disabled={!canUnmortgage}
-                                title={
-                                  canUnmortgage
-                                    ? `Выкупить за $ ${formatDollar(unmortgageCost)}`
-                                    : `Недостаточно средств ($ ${formatDollar(
-                                        unmortgageCost
-                                      )})`
-                                }
-                                onClick={() => props.onUnmortgage(selectedDef.id)}
-                                className={`btn-emerald-3d px-2 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                                  showAuctionBtn ? '' : 'col-span-2'
-                                }`}
-                              >
-                                Выкупить
-                              </button>
-                              {showAuctionBtn && (
-                                <button
-                                  type="button"
-                                  disabled={!canAuctionMortgaged}
-                                  title={
-                                    canAuctionMortgaged
-                                      ? 'Выставить заложенное поле на аукцион'
-                                      : 'Аукцион доступен в свой ход до броска кубиков'
-                                  }
-                                  onClick={() => {
-                                    props.onAuctionMortgaged(selectedDef.id);
-                                    onSelectCell(null);
-                                  }}
-                                  className="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-indigo-600/85 hover:bg-indigo-500 text-white transition cursor-pointer disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed"
-                                >
-                                  Аукцион
-                                </button>
-                              )}
-                            </>
-                          )}
-                          {!selectedRt.isMortgaged &&
-                            selectedDef.type === 'PROPERTY' &&
-                            !buildCheck?.ok &&
-                            buildCheck?.reason && (
-                              <div className="col-span-2 text-[10.5px] text-emerald-300/85 leading-snug pt-0.5">
-                                🏗️ {buildCheck.reason}
-                              </div>
-                            )}
-                          {!selectedRt.isMortgaged &&
-                            !mortgageCheck?.ok &&
-                            mortgageCheck?.reason && (
-                              <div className="col-span-2 text-[10.5px] text-amber-300/85 leading-snug pt-0.5">
-                                ℹ️ {mortgageCheck.reason}
-                              </div>
-                            )}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
-              </>
+
+                {/* Прокручиваемое тело VIP-актива */}
+                <div className="flex-1 min-h-0 overflow-y-auto chat-scrollbar px-4 py-3 text-[12px] space-y-2.5">
+                  {/* Закрытый инсайд / мемная цитата */}
+                  <div
+                    style={{ borderLeftColor: '#E5B869' }}
+                    className="relative overflow-hidden rounded-xl bg-[#0A0C12]/95 border border-white/[0.06] border-l-[3px] px-3 py-2 text-[11.5px] text-[#E2E8F0] leading-[1.45] shadow-inner"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none select-none absolute -top-2 right-2 font-serif text-[44px] leading-none text-[#E5B869]/12"
+                    >
+                      ”
+                    </span>
+                    <div className="relative z-10 italic text-[#F1F5F9]/95">
+                      «{bodyDescription}»
+                    </div>
+                    {mechanicsHint && (
+                      <div className="relative z-10 not-italic text-[10px] text-[#94A3B8] mt-1.5 pt-1.5 border-t border-white/[0.05] font-semibold">
+                        ⚙️ {mechanicsHint}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Швейцарская таблица ренты */}
+                  {selectedDef.type === 'CAR' && (
+                    <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
+                      {carLabels.map((label, idx) => {
+                        const active = activeRentIdx === idx;
+                        const isTopTier = idx === carLabels.length - 1;
+                        return (
+                          <div
+                            key={label}
+                            className={`flex items-center justify-between gap-2 py-1.5 text-[11.5px] ${
+                              active
+                                ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 shadow-[0_0_14px_rgba(16,185,129,0.18)] text-[#6EE7B7] font-bold'
+                                : isTopTier
+                                ? 'text-[#E5B869] font-semibold'
+                                : 'text-[#CBD5E1]'
+                            }`}
+                          >
+                            <span>{isTopTier ? `${label} ★` : label}</span>
+                            <span
+                              className={`font-mono-num font-bold ${
+                                active
+                                  ? 'text-[#6EE7B7]'
+                                  : isTopTier
+                                  ? 'text-[#E5B869]'
+                                  : 'text-[#F8FAFC]'
+                              }`}
+                            >
+                              <span className="opacity-55 mr-0.5">$</span>
+                              {formatDollar(rents[idx] ?? 0)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {selectedDef.type === 'IT_UTILITY' && (
+                    <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
+                      {itLabels.map((label, idx) => {
+                        const active = activeRentIdx === idx;
+                        const mult = rents[idx] ?? (idx === 0 ? 100 : 250);
+                        const isTopTier = idx === 1;
+                        return (
+                          <div
+                            key={label}
+                            className={`flex items-center justify-between gap-2 py-1.5 text-[11.5px] ${
+                              active
+                                ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/40 shadow-[0_0_14px_rgba(16,185,129,0.18)] text-[#6EE7B7] font-bold'
+                                : isTopTier
+                                ? 'text-[#E5B869] font-semibold'
+                                : 'text-[#CBD5E1]'
+                            }`}
+                          >
+                            <span>{isTopTier ? `${label} ★` : label}</span>
+                            <span
+                              className={`inline-flex items-center gap-1.5 font-mono-num font-bold ${
+                                active
+                                  ? 'text-[#6EE7B7]'
+                                  : isTopTier
+                                  ? 'text-[#E5B869]'
+                                  : 'text-[#F8FAFC]'
+                              }`}
+                            >
+                              <MiniDicePair />
+                              <span>×{mult}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {selectedDef.type === 'PROPERTY' && (
+                    <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
+                      {propLabels.map((label, idx) => {
+                        const active = activeRentIdx === idx;
+                        const isMonopolyRow = idx === 5;
+                        return (
+                          <div
+                            key={label}
+                            className={`flex items-center justify-between gap-2 py-1 text-[11.5px] ${
+                              active
+                                ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/45 shadow-[0_0_16px_rgba(16,185,129,0.22)] text-[#6EE7B7] font-bold'
+                                : isMonopolyRow
+                                ? 'text-[#E5B869] font-bold'
+                                : idx % 2 === 1
+                                ? 'bg-white/[0.015] text-[#CBD5E1]'
+                                : 'text-[#CBD5E1]'
+                            }`}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              {active && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shadow-[0_0_6px_#10B981]" />
+                              )}
+                              <span>{label}</span>
+                            </span>
+                            <span
+                              className={`font-mono-num font-bold ${
+                                active
+                                  ? 'text-[#6EE7B7]'
+                                  : isMonopolyRow
+                                  ? 'text-[#E5B869]'
+                                  : 'text-[#F8FAFC]'
+                              }`}
+                            >
+                              <span className="opacity-55 mr-0.5">$</span>
+                              {formatDollar(rents[idx] ?? 0)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Цены покупки / залога / выкупа / постройки */}
+                  {selectedBuyable && (
+                    <div className="rounded-xl bg-[#0B0D14]/55 border border-white/[0.04] px-2.5 py-1 divide-y divide-white/[0.04] text-[11.5px]">
+                      <div className="flex items-center justify-between gap-2 py-1">
+                        <span className="text-[#94A3B8]">Покупка актива</span>
+                        <span className="font-mono-num font-semibold text-[#F8FAFC]">
+                          <span className="text-[#64748B] mr-0.5">$</span>
+                          {formatDollar(selectedDef.price ?? 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 py-1">
+                        <span className="text-[#94A3B8]">Залог в банк</span>
+                        <span className="font-mono-num font-semibold text-[#F8FAFC]">
+                          <span className="text-[#64748B] mr-0.5">$</span>
+                          {formatDollar(getMortgageValue(selectedDef.id))}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 py-1">
+                        <span className="text-[#94A3B8]">Выкуп залога</span>
+                        <span className="font-mono-num font-semibold text-[#F8FAFC]">
+                          <span className="text-[#64748B] mr-0.5">$</span>
+                          {formatDollar(unmortgageCost)}
+                        </span>
+                      </div>
+                      {selectedDef.type === 'PROPERTY' && branchCostVal > 0 && (
+                        <div className="flex items-center justify-between gap-2 py-1">
+                          <span className="text-[#94A3B8]">Постройка филиала ★</span>
+                          <span className="font-mono-num font-semibold text-[#E5B869]">
+                            <span className="opacity-65 mr-0.5">$</span>
+                            {formatDollar(branchCostVal)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Размер налога для налоговых клеток */}
+                  {!selectedBuyable &&
+                    selectedDef.type === 'TAX' &&
+                    selectedDef.taxAmount !== undefined && (
+                      <div className="rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/30 px-3 py-2 flex items-center justify-between gap-2">
+                        <span className="text-[#FDA4AF] font-semibold">Штраф / Списание</span>
+                        <span className="font-mono-num font-bold text-[#F43F5E] text-sm">
+                          -${formatDollar(selectedDef.taxAmount)}
+                        </span>
+                      </div>
+                    )}
+                </div>
+
+                {/* Закреплённый нижний футер: статус владельца и кнопки управления активом (всегда видны на мобильном и ПК) */}
+                <div className="shrink-0 border-t border-white/10 bg-[#11141D]/98 px-4 py-2.5 text-[12px] space-y-2">
+                  {selectedBuyable ? (
+                    selectedOwner ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-white/25"
+                            style={{ backgroundColor: selectedOwner.color }}
+                          />
+                          <span className="break-words font-semibold text-white">
+                            {selectedOwner.name}
+                          </span>
+                        </span>
+                        {selectedRt?.isMortgaged && (
+                          <span className="shrink-0 text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">
+                            🔒{' '}
+                            {selectedRt.mortgageRoundsLeft
+                              ? `${selectedRt.mortgageRoundsLeft} р.`
+                              : 'В залоге'}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-[#a1a1aa]">
+                        <span className="w-2 h-2 rounded-full bg-zinc-600 shrink-0" />
+                        <span>Свободное поле</span>
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-[#a1a1aa]">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: headerHex }}
+                      />
+                      <span>Специальная клетка</span>
+                    </div>
+                  )}
+
+                  {isMine && selectedRt && (
+                    <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                      {!selectedRt.isMortgaged ? (
+                        <>
+                          {selectedDef.type === 'PROPERTY' && (
+                            <button
+                              type="button"
+                              data-testid="prop-build-btn"
+                              disabled={!buildCheck?.ok}
+                              title={
+                                buildCheck?.reason ??
+                                `Построить филиал ($ ${formatDollar(branchCostVal)})`
+                              }
+                              onClick={() => {
+                                soundEngine.playBuild();
+                                props.onBuildBranch(selectedDef.id);
+                              }}
+                              className="btn-emerald-3d px-2.5 py-2 rounded-xl text-[11.5px] font-bold transition cursor-pointer"
+                            >
+                              + Филиал ★
+                            </button>
+                          )}
+                          {selectedDef.type === 'PROPERTY' &&
+                            selectedRt.branches > 0 && (
+                              <button
+                                type="button"
+                                data-testid="prop-sell-branch-btn"
+                                disabled={!sellCheck?.ok}
+                                title={
+                                  sellCheck?.reason ??
+                                  'Продать филиал (50% стоимости)'
+                                }
+                                onClick={() => props.onSellBranch(selectedDef.id)}
+                                className="px-2.5 py-2 rounded-xl text-[11.5px] font-bold bg-[#E5B869]/20 hover:bg-[#E5B869]/35 border border-[#E5B869]/50 text-[#F3D082] transition cursor-pointer disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed"
+                              >
+                                - Филиал
+                              </button>
+                            )}
+                          <button
+                            type="button"
+                            data-testid="prop-mortgage-btn"
+                            disabled={!mortgageCheck?.ok}
+                            title={
+                              mortgageCheck?.reason ??
+                              `Заложить за $ ${formatDollar(
+                                getMortgageValue(selectedDef.id)
+                              )}`
+                            }
+                            onClick={() => props.onMortgage(selectedDef.id)}
+                            className={`px-2.5 py-2 rounded-xl text-[11.5px] font-bold leading-tight bg-[#E5B869]/15 hover:bg-[#E5B869]/28 border border-[#E5B869]/55 text-[#F3D082] hover:text-white shadow-sm transition cursor-pointer disabled:bg-white/5 disabled:border-white/10 disabled:text-zinc-500 disabled:shadow-none disabled:cursor-not-allowed ${
+                              selectedDef.type !== 'PROPERTY' ||
+                              selectedRt.branches > 0
+                                ? 'col-span-2'
+                                : ''
+                            }`}
+                          >
+                            🔒 Заложить (<span className="font-mono-num">+${formatDollar(getMortgageValue(selectedDef.id))}</span>)
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            data-testid="prop-unmortgage-btn"
+                            disabled={!canUnmortgage}
+                            title={
+                              unmortgageCheck?.reason ??
+                              `Выкупить за $ ${formatDollar(unmortgageCost)}`
+                            }
+                            onClick={() => props.onUnmortgage(selectedDef.id)}
+                            className={`btn-emerald-3d px-2.5 py-2 rounded-xl text-[11.5px] font-bold transition cursor-pointer ${
+                              showAuctionBtn ? '' : 'col-span-2'
+                            }`}
+                          >
+                            Выкупить
+                          </button>
+                          {showAuctionBtn && (
+                            <button
+                              type="button"
+                              data-testid="prop-auction-btn"
+                              disabled={!canAuctionMortgaged}
+                              title={
+                                canAuctionMortgaged
+                                  ? 'Выставить заложенное поле на аукцион'
+                                  : 'Аукцион доступен в свой ход до броска кубиков'
+                              }
+                              onClick={() => {
+                                props.onAuctionMortgaged(selectedDef.id);
+                                onSelectCell(null);
+                              }}
+                              className="px-2.5 py-2 rounded-xl text-[11.5px] font-bold bg-indigo-600/85 hover:bg-indigo-500 text-white transition cursor-pointer disabled:bg-white/5 disabled:text-zinc-500 disabled:cursor-not-allowed"
+                            >
+                              Аукцион
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {!selectedRt.isMortgaged &&
+                        selectedDef.type === 'PROPERTY' &&
+                        !buildCheck?.ok &&
+                        buildCheck?.reason && (
+                          <div className="col-span-2 text-[10.5px] text-emerald-300/85 leading-snug pt-0.5">
+                            🏗️ {buildCheck.reason}
+                          </div>
+                        )}
+                      {!selectedRt.isMortgaged &&
+                        !mortgageCheck?.ok &&
+                        mortgageCheck?.reason && (
+                          <div className="col-span-2 text-[10.5px] text-amber-300/85 leading-snug pt-0.5">
+                            ℹ️ {mortgageCheck.reason}
+                          </div>
+                        )}
+                      {selectedRt.isMortgaged &&
+                        !canUnmortgage &&
+                        unmortgageCheck?.reason && (
+                          <div className="col-span-2 text-[10.5px] text-amber-300/85 leading-snug pt-0.5">
+                            ℹ️ {unmortgageCheck.reason}
+                          </div>
+                        )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+
+            if (typeof document === 'undefined') return null;
+
+            return createPortal(
+              isMobileView ? (
+                <div
+                  className="fixed inset-0 z-[65] bg-black/68 backdrop-blur-[2px] flex items-center justify-center p-3"
+                  onClick={() => onSelectCell(null)}
+                >
+                  {cardContent}
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="fixed inset-0 z-[64]"
+                    onClick={() => onSelectCell(null)}
+                    aria-hidden="true"
+                  />
+                  {cardContent}
+                </>
+              ),
+              document.body
             );
           })()}
       </div>
