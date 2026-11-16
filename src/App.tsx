@@ -130,7 +130,7 @@ export const App: React.FC = () => {
       ) : (
         <>
           {/* Мобильный переключатель (< 1024px) */}
-          <div className="lg:hidden relative z-10 flex items-center justify-between gap-2 bg-[#0F1117]/92 backdrop-blur-xl border-b border-white/[0.08] py-1.5 px-2.5 shrink-0">
+          <div className="lg:hidden relative z-10 flex items-center justify-between gap-2 bg-[#0F1117]/92 backdrop-blur-xl border-b border-white/[0.08] py-1 px-2.5 shrink-0">
             <div className="flex items-center gap-1.5">
               {[
                 { id: 'BOARD' as const, label: '🎲 Поле' },
@@ -139,7 +139,7 @@ export const App: React.FC = () => {
                 <button
                   key={t.id}
                   onClick={() => setMobileTab(t.id)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
                     mobileTab === t.id
                       ? 'btn-emerald-3d text-white'
                       : 'bg-[#161922] border border-white/10 text-neutral-300 hover:text-white'
@@ -149,16 +149,27 @@ export const App: React.FC = () => {
                 </button>
               ))}
             </div>
-            <span className="text-[11px] font-mono-num font-bold text-[#E5B869] shrink-0">
-              #{roomState.code} · {roomState.round}р
-            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[11px] font-mono-num font-bold text-[#E5B869]">
+                #{roomState.code} · {roomState.round}р
+              </span>
+              <button
+                type="button"
+                onClick={actions.leaveRoom}
+                title="Покинуть комнату"
+                aria-label="Покинуть комнату"
+                className="w-6 h-6 rounded-full bg-[#161922] hover:bg-[#F43F5E] border border-white/12 text-neutral-300 hover:text-white text-[10px] font-bold flex items-center justify-center cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* Мобильная компактная полоса игроков поверх поля (< 1024px) */}
           {mobileTab === 'BOARD' && (
             <div
               data-testid="mobile-players-strip"
-              className="lg:hidden relative z-10 flex items-center gap-1.5 px-2 py-1.5 bg-[#0C0E14]/90 backdrop-blur-xl border-b border-white/[0.07] overflow-x-auto chat-scrollbar shrink-0"
+              className="lg:hidden relative z-10 flex items-center gap-1.5 px-2 py-1 bg-[#0C0E14]/90 backdrop-blur-xl border-b border-white/[0.07] overflow-x-auto chat-scrollbar shrink-0"
             >
               {roomState.players.map((p, idx) => {
                 const isActive =
@@ -315,7 +326,7 @@ export const App: React.FC = () => {
               return (
                 <div
                   data-testid="mobile-action-dock"
-                  className="lg:hidden bg-[#0F1117]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2.5 py-2 space-y-1.5 shrink-0 z-20"
+                  className="lg:hidden bg-[#0F1117]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2 py-1.5 space-y-1 shrink-0 z-20"
                 >
                   {!tradeDraft.open &&
                   !isWalkingAfterRoll &&
@@ -560,8 +571,8 @@ export const App: React.FC = () => {
                   )}
 
                   {me && !me.isBankrupt && roomState.status === 'PLAYING' && (
-                    <div className="space-y-1.5 min-w-0">
-                      <div className="flex items-center justify-between px-0.5 text-[9px] uppercase tracking-[0.12em] text-neutral-500 font-bold">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center justify-between px-0.5 text-[8.5px] uppercase tracking-[0.12em] text-neutral-500 font-bold leading-none">
                         <span>Soundpad Deck</span>
                         {tauntCooldownLeft > 0 ? (
                           <span className="font-mono-num text-[#E5B869] normal-case tracking-normal">
@@ -580,7 +591,7 @@ export const App: React.FC = () => {
                             data-testid={`mobile-taunt-${pad.id}`}
                             disabled={tauntCooldownLeft > 0}
                             onClick={() => actions.sendTaunt(pad.id)}
-                            className="streamdeck-pad min-w-0 py-1.5 pl-2 pr-1 rounded-lg overflow-hidden disabled:opacity-35 text-[#F1F5F9] text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer leading-[1.1]"
+                            className="streamdeck-pad min-w-0 py-1 pl-2 pr-1 rounded-lg overflow-hidden disabled:opacity-35 text-[#F1F5F9] text-[9px] font-bold flex items-center justify-center gap-1 cursor-pointer leading-[1.08]"
                           >
                             <span
                               aria-hidden="true"

@@ -538,14 +538,14 @@
 
 /* Адаптивный квадратный размер доски с местом под внешние плашки цен */
 .board-square-wrap {
-  width: min(calc(100cqw - 60px), calc(100cqh - 38px), 1080px);
-  height: min(calc(100cqw - 60px), calc(100cqh - 38px), 1080px);
+  width: min(calc(100cqw - 54px), calc(100cqh - 36px), 1080px);
+  height: min(calc(100cqw - 54px), calc(100cqh - 36px), 1080px);
 }
 
 @media (min-width: 640px) {
   .board-square-wrap {
-    width: min(calc(100cqw - 104px), calc(100cqh - 52px), 1080px);
-    height: min(calc(100cqw - 104px), calc(100cqh - 52px), 1080px);
+    width: min(calc(100cqw - 102px), calc(100cqh - 50px), 1080px);
+    height: min(calc(100cqw - 102px), calc(100cqh - 50px), 1080px);
   }
 }
 
