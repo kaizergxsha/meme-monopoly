@@ -1333,32 +1333,25 @@ async function main() {
     const shotPre = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 88 });
     fs.writeFileSync(path.join(shotDir, '01_pre_roll.jpg'), Buffer.from(shotPre.data, 'base64'));
 
-    // Строгая проверка ШАГ 1 + ШАГ 4: отсутствие троеточий (...) и обрезки текста на клетках доски, в Soundpad Deck и в поповере
+    // Строгая проверка: отсутствие текстовых подписей под карточками на поле, крупные SVG-иллюстрации и отсутствие обрезки в Soundpad Deck
     const textWrapAudit = await cdp.eval(`(() => {
-      const clippedCells = [];
+      const cellsWithTextLabels = [];
+      const tinyDesktopArt = [];
       for (let cid = 0; cid < 40; cid++) {
-        if (cid === 0 || cid === 10 || cid === 20 || cid === 30) continue;
         const cellEl = document.querySelector('[data-cell-id="' + cid + '"]');
         if (!cellEl) continue;
-        const spans = Array.from(cellEl.querySelectorAll('span'));
-        const labelSpan = spans[spans.length - 1];
-        if (!labelSpan) continue;
-        const cs = window.getComputedStyle(labelSpan);
-        if (
-          cs.textOverflow === 'ellipsis' ||
-          (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') ||
-          labelSpan.scrollWidth > labelSpan.clientWidth + 2 ||
-          labelSpan.scrollHeight > labelSpan.clientHeight + 2
-        ) {
-          clippedCells.push({
-            cid,
-            text: labelSpan.textContent,
-            sw: labelSpan.scrollWidth,
-            cw: labelSpan.clientWidth,
-            sh: labelSpan.scrollHeight,
-            ch: labelSpan.clientHeight,
-            clamp: cs.webkitLineClamp,
-          });
+        const svg = cellEl.querySelector('svg');
+        const sr = svg ? svg.getBoundingClientRect() : { width: 0, height: 0 };
+        if (sr.width < 32 || sr.height < 32) {
+          tinyDesktopArt.push({ cid, w: Math.round(sr.width), h: Math.round(sr.height) });
+        }
+        if (cid === 0 || cid === 10 || cid === 20 || cid === 30) continue;
+        const spans = Array.from(cellEl.querySelectorAll('span')).filter((s) => {
+          const txt = (s.textContent || '').trim();
+          return txt && !/^(\\$|×|🔒|★|⚡|🌀|📤|📥)/.test(txt);
+        });
+        if (spans.length > 0) {
+          cellsWithTextLabels.push({ cid, labels: spans.map((s) => s.textContent) });
         }
       }
 
@@ -1383,11 +1376,15 @@ async function main() {
         }
       }
 
-      return { clippedCells, clippedPads };
+      return { cellsWithTextLabels, tinyDesktopArt, clippedPads };
     })()`);
-    console.log('[QA] Text wrapping & non-truncation audit:', JSON.stringify(textWrapAudit));
-    if (textWrapAudit.clippedCells.length > 0 || textWrapAudit.clippedPads.length > 0) {
-      throw new Error(`Detected clipped/truncated UI labels: ${JSON.stringify(textWrapAudit)}`);
+    console.log('[QA] Board artwork & no-cell-labels audit:', JSON.stringify(textWrapAudit));
+    if (
+      textWrapAudit.cellsWithTextLabels.length > 0 ||
+      textWrapAudit.tinyDesktopArt.length > 0 ||
+      textWrapAudit.clippedPads.length > 0
+    ) {
+      throw new Error(`Board artwork / label audit failed: ${JSON.stringify(textWrapAudit)}`);
     }
 
     // Проверка крупной 3D-иллюстрации в шапке поповера при клике на клетку 6 и клетку 7 (в фазе PRE_ROLL)
@@ -1601,6 +1598,51 @@ async function main() {
 
         const shotMobile = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 88 });
         fs.writeFileSync(path.join(shotDir, '05_mobile_390x844.jpg'), Buffer.from(shotMobile.data, 'base64'));
+
+        // Проверка видимости всех 40 иллюстраций на мобильном экране 390x844 и сохранения названия/описания при открытии карточки
+        const mobileArtAudit = await cdp.eval(`(() => {
+          const smallArt = [];
+          for (let cid = 0; cid < 40; cid++) {
+            const cellEl = document.querySelector('[data-cell-id="' + cid + '"]');
+            const svg = cellEl ? cellEl.querySelector('svg') : null;
+            const r = svg ? svg.getBoundingClientRect() : { width: 0, height: 0 };
+            if (r.width < 15 || r.height < 15) {
+              smallArt.push({ cid, w: Math.round(r.width), h: Math.round(r.height) });
+            }
+          }
+          return smallArt;
+        })()`);
+        console.log('[QA] Mobile 390x844 cell artwork audit:', JSON.stringify(mobileArtAudit));
+        if (mobileArtAudit.length > 0) {
+          throw new Error(`Mobile cell artwork collapsed or invisible on 390x844: ${JSON.stringify(mobileArtAudit)}`);
+        }
+
+        await cdp.eval(`(() => {
+          const c29 = document.querySelector('[data-cell-id="29"]');
+          if (c29) c29.click();
+        })()`);
+        await sleep(250);
+        const mobilePopCheck = await cdp.eval(`(() => {
+          const dlg = document.querySelector('[role="dialog"]');
+          const txtContent = dlg ? dlg.textContent || '' : '';
+          return {
+            open: !!dlg,
+            hasTitle: txtContent.includes('Брейнрот-лента 24/7'),
+            hasDesc: txtContent.includes('кинетический песок'),
+          };
+        })()`);
+        console.log('[QA] Mobile 390x844 card popover check:', JSON.stringify(mobilePopCheck));
+        if (!mobilePopCheck.open || !mobilePopCheck.hasTitle || !mobilePopCheck.hasDesc) {
+          throw new Error(`Mobile card popover missing title or description: ${JSON.stringify(mobilePopCheck)}`);
+        }
+        const shotMobilePop = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 88 });
+        fs.writeFileSync(path.join(shotDir, '05b_mobile_popover_390x844.jpg'), Buffer.from(shotMobilePop.data, 'base64'));
+        await cdp.eval(`(() => {
+          const dlg = document.querySelector('[role="dialog"]');
+          const closeBtn = dlg?.querySelector('button[aria-label="Закрыть карточку"]');
+          if (closeBtn) closeBtn.click();
+        })()`);
+        await sleep(200);
       }
       if (vp.width === 1920) {
         if (vpRes.boardW < 950) {
