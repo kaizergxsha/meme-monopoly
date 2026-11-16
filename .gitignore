@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.vite-temp/
+.qa-shots/
+.tmp-chrome-audit-*/
+*.jpg
+*.png
+!public/art/*.png
+!public/art/*.jpg
+cloudflared.exe
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+Thumbs.db
