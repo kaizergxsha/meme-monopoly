@@ -183,8 +183,14 @@ export function canBuildBranch(
   const cell = state.cells[cellId];
   const player = state.players.find((p) => p.id === playerId);
   if (!def || !cell || !player) return { ok: false, reason: 'Клетка не найдена' };
+  if (state.status !== 'PLAYING' || state.phase === 'GAME_OVER') {
+    return { ok: false, reason: 'Игра не активна' };
+  }
   if (state.players[state.currentPlayerIndex]?.id !== playerId) {
     return { ok: false, reason: 'Строить можно только в свой ход' };
+  }
+  if (state.phase === 'PENDING_DEBT' || state.phase === 'AUCTION') {
+    return { ok: false, reason: 'Сначала завершите текущее действие' };
   }
   if (def.type !== 'PROPERTY' || !def.groupId || !def.branchCost) {
     return { ok: false, reason: 'На этом поле нельзя строить филиалы' };
@@ -226,8 +232,19 @@ export function canSellBranch(
   if (!def || !cell || def.type !== 'PROPERTY' || !def.groupId || !def.branchCost) {
     return { ok: false, reason: 'Нет филиалов' };
   }
+  if (state.status !== 'PLAYING' || state.phase === 'GAME_OVER') {
+    return { ok: false, reason: 'Игра не активна' };
+  }
   if (cell.ownerId !== playerId) return { ok: false, reason: 'Не ваше поле' };
   if (cell.branches <= 0) return { ok: false, reason: 'Нечего продавать' };
+
+  const isCoveringDebt =
+    state.phase === 'PENDING_DEBT' &&
+    state.pendingDebt?.debtorId === playerId &&
+    (state.players.find((p) => p.id === playerId)?.cash ?? 0) < state.pendingDebt.amount;
+  if (!isCoveringDebt && state.players[state.currentPlayerIndex]?.id !== playerId) {
+    return { ok: false, reason: 'Продать филиал можно только в свой ход' };
+  }
 
   if (!isSpeedRulesMode(state.settings)) {
     const groupDefs = getGroupCellDefs(def.groupId);
@@ -249,6 +266,35 @@ export function getUnmortgageCost(cellId: number): number {
   return Math.ceil(price * 0.6);
 }
 
+export function canUnmortgageCell(
+  state: RoomState,
+  playerId: string,
+  cellId: number
+): { ok: boolean; reason?: string } {
+  const def = BOARD_CELLS[cellId];
+  const cell = state.cells[cellId];
+  const player = state.players.find((p) => p.id === playerId);
+  if (!def || !cell || !player || !isBuyableCell(def)) {
+    return { ok: false, reason: 'Нельзя выкупить' };
+  }
+  if (state.status !== 'PLAYING' || state.phase === 'GAME_OVER') {
+    return { ok: false, reason: 'Игра не активна' };
+  }
+  if (cell.ownerId !== playerId) return { ok: false, reason: 'Не ваше поле' };
+  if (!cell.isMortgaged) return { ok: false, reason: 'Поле не в залоге' };
+  if (state.players[state.currentPlayerIndex]?.id !== playerId) {
+    return { ok: false, reason: 'Выкупить залог можно только в свой ход' };
+  }
+  if (state.phase === 'PENDING_DEBT' || state.phase === 'AUCTION') {
+    return { ok: false, reason: 'Сначала завершите текущее действие' };
+  }
+  const cost = getUnmortgageCost(cellId);
+  if (player.cash < cost) {
+    return { ok: false, reason: `Недостаточно средств (${formatMoney(cost)})` };
+  }
+  return { ok: true };
+}
+
 export function canMortgageCell(
   state: RoomState,
   playerId: string,
@@ -257,6 +303,9 @@ export function canMortgageCell(
   const def = BOARD_CELLS[cellId];
   const cell = state.cells[cellId];
   if (!def || !cell || !isBuyableCell(def)) return { ok: false, reason: 'Нельзя заложить' };
+  if (state.status !== 'PLAYING' || state.phase === 'GAME_OVER') {
+    return { ok: false, reason: 'Игра не активна' };
+  }
   if (cell.ownerId !== playerId) return { ok: false, reason: 'Не ваше поле' };
   if (cell.isMortgaged) return { ok: false, reason: 'Уже в залоге' };
   const isCoveringDebt =

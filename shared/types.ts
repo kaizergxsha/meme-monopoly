@@ -133,6 +133,7 @@ export interface PlayerState {
   inJail: boolean;
   jailTurns: number; // 0..3
   skipTurns: number;
+  reverseTurns: number; // количество бросков задом наперёд (против часовой)
   shields: number; // «Крыша от братков» (Скам-иммунитет)
   doublesStreak: number;
   isBankrupt: boolean;
@@ -153,12 +154,14 @@ export interface DiceRollResult {
   totalSteps: number;
   rolledBy: string;
   timestamp: number;
+  isReverse?: boolean;
 }
 
 export interface AuctionState {
   cellId: number;
   isMortgagedAuction: boolean;
   sellerId: string | null; // non-null if owner auctioned mortgaged property
+  initiatorId?: string | null; // player who declined property & started the auction
   currentBid: number;
   highestBidderId: string | null;
   currentBidderId: string | null;
@@ -220,7 +223,11 @@ export type ChanceCardKind =
   | 'BRANCH_BONUS'
   | 'EXTRA_TURN'
   | 'STEAL_LEADER'
-  | 'FREE_PORTAL';
+  | 'FREE_PORTAL'
+  | 'REVERSE_MOVE'
+  | 'SWAP_POSITION'
+  | 'GOTO_CASINO'
+  | 'ASSET_DIVIDEND';
 
 export interface ChanceCardDef {
   id: string;
@@ -253,7 +260,15 @@ export type TauntSoundId =
   | 'bruh'
   | 'laugh'
   | 'casino'
-  | 'gay';
+  | 'gay'
+  | 'coal_plant'
+  | 'batya_doma'
+  | 'podstavili'
+  | 'net_idi'
+  | 'tck'
+  | 'zrya_polez'
+  | 'am_am_am'
+  | 'spasibo_horosho';
 
 export interface TauntDef {
   id: TauntSoundId;
@@ -280,6 +295,25 @@ export interface BankruptcyAnimationEvent {
   winnerName: string;
   reason: string;
   cleanReason: string;
+  timestamp: number;
+}
+
+export type PoliceArrestReason = 'POLICE_CELL' | 'THREE_DOUBLES' | 'CHANCE_CARD';
+
+export interface PoliceArrestEvent {
+  id: string;
+  playerId: string;
+  playerName: string;
+  playerAvatar: string;
+  playerColor: string;
+  reason: PoliceArrestReason;
+  fromCell: number;
+  walkDurationMs: number;
+  diceSummary?: string;
+  title: string;
+  cleanTitle: string;
+  subtitle: string;
+  cleanSubtitle: string;
   timestamp: number;
 }
 
@@ -318,6 +352,7 @@ export interface RoomState {
   turnStartedAt: number | null;
   turnDeadlineAt: number | null;
   hasExtraTurn: boolean;
+  extraTurnsLeft?: number;
   mortgagedThisTurn: boolean;
   builtGroupsThisTurn: string[];
   tradesProposedThisTurn?: number;
@@ -333,6 +368,7 @@ export interface RoomState {
   lastCardPopup: ActiveCardPopup | null;
   lastTransfer?: CashTransferAnim | null;
   lastPoliceArrestAt?: number | null;
+  lastPoliceArrest?: PoliceArrestEvent | null;
   lastTauntAt?: number;
   winnerIds: string[];
   winnerTeam: 0 | 1 | null;
