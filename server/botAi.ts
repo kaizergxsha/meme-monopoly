@@ -70,6 +70,14 @@ export function tickBots(manager: GameManager) {
     ) {
       continue;
     }
+    // Даём игроку увидеть поход до облавы, арест с мигалками и этапирование в СИЗО перед ходом бота
+    if (
+      room.state.lastPoliceArrest &&
+      Date.now() - room.state.lastPoliceArrest.timestamp <
+        room.state.lastPoliceArrest.walkDurationMs + 2800
+    ) {
+      continue;
+    }
 
     if (room.state.phase === 'PRE_ROLL') {
       if (cur.inJail && cur.cash >= 2500) {
@@ -163,6 +171,17 @@ export function tickBots(manager: GameManager) {
         manager.surrenderOrBankrupt(room, cur.id);
       }
     } else if (room.state.phase === 'POST_ROLL') {
+      for (const c of room.state.cells) {
+        const def = BOARD_CELLS[c.id];
+        if (
+          c.ownerId === cur.id &&
+          def?.branchCost &&
+          cur.cash >= def.branchCost + 1500 &&
+          canBuildBranch(room.state, cur.id, c.id).ok
+        ) {
+          manager.buildBranch(room, cur.id, c.id);
+        }
+      }
       manager.endTurn(room, cur.id);
     }
   }

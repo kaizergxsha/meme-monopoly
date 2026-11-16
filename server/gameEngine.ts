@@ -19,6 +19,7 @@ import {
   canBuildBranch,
   canMortgageCell,
   canSellBranch,
+  canUnmortgageCell,
   checkTradeFairness,
   formatMoney,
   getAntiStallStatus,
@@ -40,6 +41,7 @@ import {
   KickVoteState,
   PlayerState,
   PlayerStats,
+  PoliceArrestReason,
   PublicRoomSummary,
   RoomSettings,
   RoomState,
@@ -97,6 +99,10 @@ function randomId(len = 6): string {
     out += chars[Math.floor(Math.random() * chars.length)];
   }
   return out;
+}
+
+function pickRandom<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -262,6 +268,7 @@ export class GameManager {
       turnStartedAt: null,
       turnDeadlineAt: null,
       hasExtraTurn: false,
+      extraTurnsLeft: 0,
       mortgagedThisTurn: false,
       builtGroupsThisTurn: [],
       tradesProposedThisTurn: 0,
@@ -277,6 +284,7 @@ export class GameManager {
       lastCardPopup: null,
       lastTransfer: null,
       lastPoliceArrestAt: null,
+      lastPoliceArrest: null,
       lastTauntAt: 0,
       winnerIds: [],
       winnerTeam: null,
@@ -347,6 +355,7 @@ export class GameManager {
       inJail: false,
       jailTurns: 0,
       skipTurns: 0,
+      reverseTurns: 0,
       shields: 0,
       doublesStreak: 0,
       isBankrupt: false,
@@ -656,7 +665,7 @@ export class GameManager {
     }));
     room.state.round = 1;
     room.state.startedAt = Date.now();
-    room.state.hasExtraTurn = false;
+    this.setExtraTurns(room, 0);
     room.state.mortgagedThisTurn = false;
     room.state.builtGroupsThisTurn = [];
     room.state.tradesProposedThisTurn = 0;
@@ -672,6 +681,7 @@ export class GameManager {
     room.state.lastCardPopup = null;
     room.state.lastTransfer = null;
     room.state.lastPoliceArrestAt = null;
+    room.state.lastPoliceArrest = null;
     room.state.lastTauntAt = 0;
     room.state.winnerIds = [];
     room.state.winnerTeam = null;
@@ -683,6 +693,7 @@ export class GameManager {
       p.inJail = false;
       p.jailTurns = 0;
       p.skipTurns = 0;
+      p.reverseTurns = 0;
       p.shields = 0;
       p.doublesStreak = 0;
       p.isBankrupt = false;
@@ -699,11 +710,16 @@ export class GameManager {
     const players = room.state.players;
     if (players.length !== 3) return;
 
-    const basket1Ids = shuffle(
-      BOARD_CELLS.filter(
-        (c) => c.groupId && INDUSTRIES[c.groupId]?.raskladBasket === 1
-      ).map((c) => c.id)
-    ); // 18 fields -> 6 each
+    const basket1GroupIds = shuffle(
+      Object.keys(INDUSTRIES).filter(
+        (gid) => INDUSTRIES[gid]?.raskladBasket === 1
+      )
+    ); // 6 отраслей по 3 поля -> по 2 полные монополии (6 полей) каждому игроку
+    const basket1Ids: number[] = [];
+    for (const gid of basket1GroupIds) {
+      const gCells = BOARD_CELLS.filter((c) => c.groupId === gid).map((c) => c.id);
+      basket1Ids.push(...gCells);
+    }
     const basket2Ids = shuffle(
       BOARD_CELLS.filter(
         (c) => c.groupId && INDUSTRIES[c.groupId]?.raskladBasket === 2
@@ -763,6 +779,17 @@ export class GameManager {
 
   // ================== ХОДЫ, РАУНДЫ И ТАЙМЕРЫ ==================
 
+  private setExtraTurns(room: ServerRoom, count: number) {
+    const safe = Math.max(0, Math.floor(count));
+    room.state.extraTurnsLeft = safe;
+    room.state.hasExtraTurn = safe > 0;
+  }
+
+  private addExtraTurn(room: ServerRoom, delta = 1) {
+    const cur = room.state.extraTurnsLeft ?? (room.state.hasExtraTurn ? 1 : 0);
+    this.setExtraTurns(room, cur + delta);
+  }
+
   private setPhaseDeadline(room: ServerRoom, customSeconds?: number) {
     const now = Date.now();
     room.state.turnStartedAt = now;
@@ -787,7 +814,6 @@ export class GameManager {
     }
 
     room.state.currentPlayerIndex = idx;
-    room.state.hasExtraTurn = false;
     room.state.speedTargetMode = 'NONE';
     room.state.validSpeedTargets = [];
     room.state.portal = null;
@@ -800,7 +826,10 @@ export class GameManager {
     room.state.tradesProposedThisTurn = 0;
     room.tradeDraftExtensionsThisTurn = 0;
     if (!isExtraTurn) {
+      this.setExtraTurns(room, 0);
       player.doublesStreak = 0;
+    } else {
+      this.setExtraTurns(room, room.state.extraTurnsLeft ?? 0);
     }
 
     // Проверка пропуска хода
@@ -869,7 +898,7 @@ export class GameManager {
       this.addLog(
         room,
         'SYSTEM',
-        `⚡ РАУНД ${room.state.round}: Разблокирован 3-й БЫСТРЫЙ КУБИК (Триплы, Маршрутка, Мем-подлянка М1)!`,
+        `⚡ РАУНД ${room.state.round}: Разблокирован 3-й БЫСТРЫЙ КУБИК (Триплы, Маршрутка, Мем-подлянка)!`,
         `⚡ Раунд ${room.state.round}: Активирован Быстрый кубик!`
       );
     }
@@ -977,13 +1006,21 @@ export class GameManager {
     player.inJail = false;
     player.jailTurns = 0;
     this.recordTransfer(room, player.id, 'BANK', 500, 10);
-    this.addLog(
-      room,
-      'SYSTEM',
-      `🔓 ${player.name} дал залог ${formatMoney(500)} и вышел из изолятора!`,
-      `🔓 ${player.name} оплатил залог ${formatMoney(500)} и вышел на свободу!`,
-      player
-    );
+    const buyoutMsg = pickRandom([
+      {
+        meme: `📋 ${player.name} оформил «белый билет» через ВЛК за ${formatMoney(500)} и списался из Учебки!`,
+        clean: `📋 ${player.name} оплатил справку ${formatMoney(500)} и досрочно покинул Учебку!`,
+      },
+      {
+        meme: `🔓 ${player.name} занёс старшине ${formatMoney(500)} на краску для бордюров и вышел за КПП Учебки!`,
+        clean: `🔓 ${player.name} внёс выкуп ${formatMoney(500)} и вышел из Учебки!`,
+      },
+      {
+        meme: `🪖 ${player.name} нашёл у себя «плоскостопие 4-й степени» за ${formatMoney(500)} и укатил из Учебки домой!`,
+        clean: `🪖 ${player.name} оформил досрочный выход из Учебки за ${formatMoney(500)}!`,
+      },
+    ]);
+    this.addLog(room, 'SYSTEM', buyoutMsg.meme, buyoutMsg.clean, player);
     this.emitState(room);
   }
 
@@ -998,6 +1035,8 @@ export class GameManager {
     // Логика в тюрьме (без 3-го кубика)
     if (player.inJail) {
       const isDouble = die1 === die2;
+      const willMove = isDouble || player.jailTurns + 1 >= 3;
+      const isReverseExit = willMove && player.reverseTurns > 0;
       room.state.lastDice = {
         die1,
         die2,
@@ -1007,41 +1046,60 @@ export class GameManager {
         totalSteps: die1 + die2,
         rolledBy: player.id,
         timestamp: Date.now(),
+        isReverse: isReverseExit,
       };
 
       if (isDouble) {
         player.inJail = false;
         player.jailTurns = 0;
-        room.state.hasExtraTurn = false;
-        this.addLog(
-          room,
-          'DICE',
-          `🎲 [${die1} : ${die2}] ДУБЛЬ! ${player.name} красиво сбегает с бутылки!`,
-          `🎲 [${die1} : ${die2}] Дубль! ${player.name} выходит из камеры бесплатно!`,
-          player
-        );
+        this.setExtraTurns(room, 0);
+        const escapeMsg = pickRandom([
+          {
+            meme: `🎲 [${die1} : ${die2}] ДУБЛЬ! ${player.name} перемахнул через забор Учебки пока старшина спал!`,
+            clean: `🎲 [${die1} : ${die2}] Дубль! ${player.name} досрочно выходит из Учебки бесплатно!`,
+          },
+          {
+            meme: `🎲 [${die1} : ${die2}] ДУБЛЬ! ${player.name} сбежал с наряда за хлебом и не вернулся в Учебку!`,
+            clean: `🎲 [${die1} : ${die2}] Дубль! ${player.name} покидает полигон Учебки!`,
+          },
+          {
+            meme: `🎲 [${die1} : ${die2}] ДУБЛЬ! ${player.name} замаскировался под куст на учениях и дал дёру из Учебки!`,
+            clean: `🎲 [${die1} : ${die2}] Дубль! ${player.name} успешно завершает смену в Учебке!`,
+          },
+        ]);
+        this.addLog(room, 'DICE', escapeMsg.meme, escapeMsg.clean, player);
         this.moveClockwiseAndResolve(room, player, die1 + die2);
       } else {
         player.jailTurns += 1;
         if (player.jailTurns >= 3) {
           player.inJail = false;
           player.jailTurns = 0;
-          this.addLog(
-            room,
-            'DICE',
-            `🎲 [${die1} : ${die2}] 3-я ходка мимо! Принудительный выкуп ${formatMoney(500)} и выход.`,
-            `🎲 [${die1} : ${die2}] 3-я попытка неудачна — принудительный штраф ${formatMoney(500)} и ход.`,
-            player
-          );
+          const releaseMsg = pickRandom([
+            {
+              meme: `🎲 [${die1} : ${die2}] 3-й наряд позади! Дембельский взнос ${formatMoney(500)} в каптёрку — и выход из Учебки.`,
+              clean: `🎲 [${die1} : ${die2}] 3-й ход в Учебке завершён — взнос ${formatMoney(500)} и выход на поле.`,
+            },
+            {
+              meme: `🎲 [${die1} : ${die2}] Отмотал все 3 смены на полигоне! Списали ${formatMoney(500)} за казённые берцы — свободен.`,
+              clean: `🎲 [${die1} : ${die2}] Срок в Учебке вышел — оплата ${formatMoney(500)} и ход.`,
+            },
+          ]);
+          this.addLog(room, 'DICE', releaseMsg.meme, releaseMsg.clean, player);
           if (player.cash >= 500) {
             player.cash -= 500;
             this.moveClockwiseAndResolve(room, player, die1 + die2);
           } else {
             const steps = die1 + die2;
             const oldPos = player.position;
-            const newPos = (oldPos + steps) % 40;
+            let newPos = (oldPos + steps) % 40;
+            let crossedStart = oldPos + steps >= 40;
+            if (player.reverseTurns > 0) {
+              player.reverseTurns = Math.max(0, player.reverseTurns - 1);
+              newPos = ((oldPos - (steps % 40)) + 40) % 40;
+              crossedStart = false;
+            }
             player.position = newPos;
-            if (oldPos + steps >= 40) {
+            if (crossedStart) {
               this.awardStartSalary(room, player, newPos === 0);
             }
             if (player.cash >= 500) {
@@ -1054,21 +1112,29 @@ export class GameManager {
                 player,
                 'BANK',
                 500,
-                'Принудительный выкуп из обезьянника',
-                'Принудительный выход из камеры',
+                'Дембельский взнос из Учебки',
+                'Обязательный взнос при выходе из Учебки',
                 false
               );
             }
           }
         } else {
-          room.state.hasExtraTurn = false;
-          this.addLog(
-            room,
-            'DICE',
-            `🎲 [${die1} : ${die2}] Не дубль — ${player.name} продолжает чиллить в обезьяннике (${player.jailTurns}/3).`,
-            `🎲 [${die1} : ${die2}] Не дубль — ${player.name} остаётся в камере (${player.jailTurns}/3).`,
-            player
-          );
+          this.setExtraTurns(room, 0);
+          const stayMsg = pickRandom([
+            {
+              meme: `🎲 [${die1} : ${die2}] Не дубль — ${player.name} чистит ведро картошки на кухне Учебки (${player.jailTurns}/3).`,
+              clean: `🎲 [${die1} : ${die2}] Не дубль — ${player.name} остаётся на подготовке в Учебке (${player.jailTurns}/3).`,
+            },
+            {
+              meme: `🎲 [${die1} : ${die2}] Мимо дубля — ${player.name} копает окоп «от забора и до обеда» в Учебке (${player.jailTurns}/3).`,
+              clean: `🎲 [${die1} : ${die2}] Не дубль — ${player.name} продолжает смену в Учебке (${player.jailTurns}/3).`,
+            },
+            {
+              meme: `🎲 [${die1} : ${die2}] Без дубля — ${player.name} красит траву на плацу Учебки (${player.jailTurns}/3).`,
+              clean: `🎲 [${die1} : ${die2}] Не дубль — ${player.name} дежурит в Учебке (${player.jailTurns}/3).`,
+            },
+          ]);
+          this.addLog(room, 'DICE', stayMsg.meme, stayMsg.clean, player);
           this.finishPostRollOrAdvance(room);
         }
       }
@@ -1087,6 +1153,8 @@ export class GameManager {
     const numericSpeed = typeof speedDie === 'number' ? speedDie : 0;
     const totalSteps = die1 + die2 + numericSpeed;
 
+    const isReverseRoll = !isTriple && speedDie !== 'M1' && player.reverseTurns > 0;
+
     room.state.lastDice = {
       die1,
       die2,
@@ -1096,13 +1164,14 @@ export class GameManager {
       totalSteps,
       rolledBy: player.id,
       timestamp: Date.now(),
+      isReverse: isReverseRoll,
     };
 
     const speedLabel =
       speedDie === 'BUS'
         ? ' + 🚐 АВТОБУС'
         : speedDie === 'M1'
-        ? ' + 😈 М1-ПОДЛЯНКА'
+        ? ' + 😈 ПОДЛЯНКА'
         : speedDie !== null
         ? ` + ⚡${speedDie}`
         : '';
@@ -1110,7 +1179,6 @@ export class GameManager {
     // 1) ТРИПЛ (1:1:1, 2:2:2, 3:3:3) -> выбор любой клетки
     if (isTriple) {
       player.doublesStreak = 0;
-      room.state.hasExtraTurn = false;
       room.state.phase = 'CHOOSE_SPEED_TARGET';
       room.state.speedTargetMode = 'TRIPLE';
       room.state.validSpeedTargets = BOARD_CELLS.map((c) => c.id).filter(
@@ -1132,36 +1200,54 @@ export class GameManager {
     if (isDouble) {
       player.doublesStreak += 1;
       if (player.doublesStreak >= 3) {
-        player.position = 10;
-        player.inJail = true;
-        player.jailTurns = 0;
-        player.doublesStreak = 0;
-        room.state.hasExtraTurn = false;
-        room.state.lastPoliceArrestAt = Date.now();
-        this.addLog(
+        const arrestFrom = player.position;
+        this.triggerPoliceArrest(
           room,
-          'DICE',
-          `🚨🎲 [${die1}:${die2}${speedLabel}] ТРИ ДУБЛЯ ПОДРЯД! Патруль тормознул ${player.name} за спидхак — в изолятор!`,
-          `🚨🎲 [${die1}:${die2}${speedLabel}] Три дубля подряд! ${player.name} отправляется в камеру!`,
-          player
+          player,
+          'THREE_DOUBLES',
+          arrestFrom,
+          620,
+          `[${die1}:${die2}]`
         );
+        const speedTrapMsg = pickRandom([
+          {
+            meme: `🚐🎲 [${die1}:${die2}${speedLabel}] ТРИ ДУБЛЯ ПОДРЯД! ${player.name} гнал так быстро, что влетел прямо в блокпост ТЦК — уехал в Учебку!`,
+            clean: `🚐🎲 [${die1}:${die2}${speedLabel}] Три дубля подряд! ${player.name} задержан на блокпосту и отправлен в Учебку!`,
+          },
+          {
+            meme: `🪖🎲 [${die1}:${die2}${speedLabel}] 3 ДУБЛЯ КРЯДУ! Тонированный бусик перехватил гонщика ${player.name} — прямиком в Учебку!`,
+            clean: `🪖🎲 [${die1}:${die2}${speedLabel}] Превышение скорости (3 дубля)! ${player.name} отправляется в Учебку!`,
+          },
+          {
+            meme: `📋🎲 [${die1}:${die2}${speedLabel}] СПИДХАК (3 ДУБЛЯ)! У ${player.name} «сверили данные» на месте и выдали берцы в Учебку!`,
+            clean: `📋🎲 [${die1}:${die2}${speedLabel}] Три дубля кряду — ${player.name} уезжает на полигон в Учебку!`,
+          },
+        ]);
+        this.addLog(room, 'DICE', speedTrapMsg.meme, speedTrapMsg.clean, player);
         this.finishPostRollOrAdvance(room);
         this.emitState(room);
         return;
       }
-      room.state.hasExtraTurn = true;
+      this.addExtraTurn(room, 1);
     } else {
       player.doublesStreak = 0;
-      room.state.hasExtraTurn = false;
+      this.setExtraTurns(room, room.state.extraTurnsLeft ?? 0);
     }
 
     // 3) Бонус «АВТОБУС» на быстром кубике
     if (speedDie === 'BUS') {
-      const distToNextCorner = 10 - (player.position % 10);
-      const maxSteps = Math.max(die1 + die2, distToNextCorner);
+      const goingBackwards = player.reverseTurns > 0;
+      const distToCorner = goingBackwards
+        ? player.position % 10 || 10
+        : 10 - (player.position % 10);
+      const maxSteps = Math.max(die1 + die2, distToCorner);
       const targets: number[] = [];
       for (let s = 1; s <= maxSteps; s++) {
-        targets.push((player.position + s) % 40);
+        targets.push(
+          goingBackwards
+            ? ((player.position - s) % 40 + 40) % 40
+            : (player.position + s) % 40
+        );
       }
       room.state.phase = 'CHOOSE_SPEED_TARGET';
       room.state.speedTargetMode = 'BUS';
@@ -1170,36 +1256,41 @@ export class GameManager {
       this.addLog(
         room,
         'DICE',
-        `🚐🎲 [${die1}:${die2} + АВТОБУС] ${player.name} выбирает остановку вперёд (до ${maxSteps} клеток)!`,
-        `🚐🎲 [${die1}:${die2} + Автобус] ${player.name} выбирает клетку для остановки!`,
+        `🚐🎲 [${die1}:${die2} + АВТОБУС] ${player.name} выбирает остановку ${
+          goingBackwards ? 'задом наперёд ⏪' : 'вперёд'
+        } (до ${maxSteps} клеток)!`,
+        `🚐🎲 [${die1}:${die2} + Автобус] ${player.name} выбирает клетку для остановки${
+          goingBackwards ? ' (обратный ход ⏪)' : ''
+        }!`,
         player
       );
       this.emitState(room);
       return;
     }
 
-    // 4) Бонус «М1 / Мем-подлянка» на быстром кубике
+    // 4) Бонус «Мем-подлянка» на быстром кубике
     if (speedDie === 'M1') {
       const targetCellId = this.findM1Target(room, player);
       const steps = (targetCellId - player.position + 40) % 40 || 40;
       this.addLog(
         room,
         'DICE',
-        `😈🎲 [${die1}:${die2} + М1] Мем-подлянка швыряет ${player.name} на «${BOARD_CELLS[targetCellId].name}»!`,
-        `😈🎲 [${die1}:${die2} + М1] Перелёт ${player.name} на «${BOARD_CELLS[targetCellId].cleanName}»!`,
+        `😈🎲 [${die1}:${die2} + ХАОС] Мем-подлянка швыряет ${player.name} на «${BOARD_CELLS[targetCellId].name}»!`,
+        `😈🎲 [${die1}:${die2} + ХАОС] Перелёт ${player.name} на «${BOARD_CELLS[targetCellId].cleanName}»!`,
         player
       );
-      this.moveClockwiseAndResolve(room, player, steps);
+      this.moveClockwiseAndResolve(room, player, steps, true);
       this.emitState(room);
       return;
     }
 
     // 5) Стандартный ход по сумме кубиков
+    const revNote = player.reverseTurns > 0 ? ' ⏪ ЗАДНИЙ ХОД' : '';
     this.addLog(
       room,
       'DICE',
-      `🎲 [${die1} + ${die2}${speedLabel} = ${totalSteps}]${isDouble ? ' (ДУБЛЬ!)' : ''} — ход ${player.name}`,
-      `🎲 [${die1} + ${die2}${speedLabel} = ${totalSteps}]${isDouble ? ' (Дубль!)' : ''} — ход ${player.name}`,
+      `🎲 [${die1} + ${die2}${speedLabel} = ${totalSteps}]${isDouble ? ' (ДУБЛЬ!)' : ''}${revNote} — ход ${player.name}`,
+      `🎲 [${die1} + ${die2}${speedLabel} = ${totalSteps}]${isDouble ? ' (Дубль!)' : ''}${revNote} — ход ${player.name}`,
       player
     );
     this.moveClockwiseAndResolve(room, player, totalSteps);
@@ -1251,12 +1342,20 @@ export class GameManager {
       );
       this.resolveCellLanding(room, player, targetCellId);
     } else {
-      const steps = (targetCellId - player.position + 40) % 40;
+      const goingBackwards = player.reverseTurns > 0;
+      const steps = goingBackwards
+        ? (player.position - targetCellId + 40) % 40
+        : (targetCellId - player.position + 40) % 40;
+      if (room.state.lastDice && room.state.lastDice.rolledBy === player.id) {
+        room.state.lastDice.totalSteps = steps;
+        room.state.lastDice.isReverse = goingBackwards;
+        room.state.lastDice.timestamp = Date.now();
+      }
       this.addLog(
         room,
         'DICE',
-        `🚐 ${player.name} вышел из маршрутки на «${BOARD_CELLS[targetCellId].name}»!`,
-        `🚐 ${player.name} доехал на автобусе до «${BOARD_CELLS[targetCellId].cleanName}»!`,
+        `🚐 ${player.name} вышел из маршрутки${goingBackwards ? ' задом наперёд ⏪' : ''} на «${BOARD_CELLS[targetCellId].name}»!`,
+        `🚐 ${player.name} доехал на автобусе${goingBackwards ? ' (обратный ход ⏪)' : ''} до «${BOARD_CELLS[targetCellId].cleanName}»!`,
         player
       );
       this.moveClockwiseAndResolve(room, player, steps);
@@ -1291,8 +1390,85 @@ export class GameManager {
     );
   }
 
-  private moveClockwiseAndResolve(room: ServerRoom, player: PlayerState, steps: number) {
+  private triggerPoliceArrest(
+    room: ServerRoom,
+    player: PlayerState,
+    reason: PoliceArrestReason,
+    fromCell: number,
+    walkDurationMs: number,
+    diceSummary?: string,
+    cardTitle?: string,
+    cleanCardTitle?: string
+  ) {
+    const now = Date.now();
+    player.position = 10;
+    player.inJail = true;
+    player.jailTurns = 0;
+    player.doublesStreak = 0;
+    this.setExtraTurns(room, 0);
+    room.state.lastPoliceArrestAt = now;
+
+    let title = 'ПОПАЛСЯ К ТЦК НА СЕКТОРЕ #30!';
+    let cleanTitle = 'ПРОВЕРКА ДОКУМЕНТОВ НА СЕКТОРЕ #30!';
+    let subtitle =
+      'Вы зашли за шаурмой, но рядом скрипнула боковая дверь тонированного бусика «просто сверить данные» — экспресс-доставка прямиком в Учебку без получки за Старт!';
+    let cleanSubtitle =
+      'Вы попали на сектор #30! Немедленная отправка на полигон в Учебку без бонуса за Старт.';
+
+    if (reason === 'THREE_DOUBLES') {
+      title = 'БЛОКПОСТ ТЦК: 3 ДУБЛЯ ПОДРЯД!';
+      cleanTitle = 'ПРЕВЫШЕНИЕ СКОРОСТИ: 3 ДУБЛЯ!';
+      subtitle = `Третий дубль кряду ${
+        diceSummary ? `${diceSummary} ` : ''
+      }завёл вас прямо в засаду с папкой повесток — срочный выезд в Учебку!`;
+      cleanSubtitle = `Вы выбросили 3 дубля подряд ${
+        diceSummary ? `${diceSummary} ` : ''
+      }— по правилам это немедленная отправка в Учебку!`;
+    } else if (reason === 'CHANCE_CARD') {
+      title = 'ЭКСПРЕСС-ПОВЕСТКА В УЧЕБКУ!';
+      cleanTitle = 'ПРЕДПИСАНИЕ КАРТЫ «ШАНС»!';
+      subtitle = `Карта «${
+        cardTitle || 'Шанс'
+      }» оформила вам горящую путёвку в тонированный бусик до Учебки без заезда на Старт!`;
+      cleanSubtitle = `По карте «${
+        cleanCardTitle || 'Шанс'
+      }» вы немедленно отправляетесь в Учебку.`;
+    }
+
+    room.state.lastPoliceArrest = {
+      id: `arrest_${now}_${Math.random().toString(36).slice(2, 6)}`,
+      playerId: player.id,
+      playerName: player.name,
+      playerAvatar: player.avatar,
+      playerColor: player.color,
+      reason,
+      fromCell,
+      walkDurationMs,
+      diceSummary,
+      title,
+      cleanTitle,
+      subtitle,
+      cleanSubtitle,
+      timestamp: now,
+    };
+  }
+
+  private moveClockwiseAndResolve(
+    room: ServerRoom,
+    player: PlayerState,
+    steps: number,
+    forceClockwise = false
+  ) {
     const oldPos = player.position;
+    if (!forceClockwise && player.reverseTurns > 0) {
+      player.reverseTurns = Math.max(0, player.reverseTurns - 1);
+      const newPos = ((oldPos - (steps % 40)) + 40) % 40;
+      player.position = newPos;
+      // При ходе в обратном направлении через точку Старт деньги не начисляются
+      this.resolveCellLanding(room, player, newPos);
+      return;
+    }
+
     const rawNew = oldPos + steps;
     const newPos = rawNew % 40;
     player.position = newPos;
@@ -1315,19 +1491,29 @@ export class GameManager {
     }
 
     if (def.type === 'POLICE') {
-      player.position = 10;
-      player.inJail = true;
-      player.jailTurns = 0;
-      player.doublesStreak = 0;
-      room.state.hasExtraTurn = false;
-      room.state.lastPoliceArrestAt = Date.now();
-      this.addLog(
-        room,
-        'SYSTEM',
-        `🚓 ПРИЁМ С МИГАЛКАМИ! ${player.name} уехал в СИЗО #13 без получки за Старт!`,
-        `🚓 Патруль задержал ${player.name}! Отправка в изолятор #13.`,
-        player
-      );
+      const now = Date.now();
+      const walkMs =
+        room.state.lastDice &&
+        room.state.lastDice.rolledBy === player.id &&
+        now - room.state.lastDice.timestamp < 2000
+          ? getTokenWalkDurationMs(room.state.lastDice)
+          : 420;
+      this.triggerPoliceArrest(room, player, 'POLICE_CELL', 30, walkMs);
+      const tckLandingMsg = pickRandom([
+        {
+          meme: `🚐 ПОПАЛСЯ К ТЦК! У сектора #30 распахнулся тонированный бусик — ${player.name} уехал «уточнять данные» прямиком в Учебку!`,
+          clean: `🚐 Проверка документов на секторе #30! ${player.name} отправляется прямиком в Учебку.`,
+        },
+        {
+          meme: `🪖 БУСИФИКАЦИЯ! ${player.name} вышел за латте на секторе #30, а через минуту уже примеряет казённые берцы по дороге в Учебку!`,
+          clean: `🪖 Патруль остановил ${player.name} на секторе #30! Экспресс-отправка в Учебку без бонуса Старта.`,
+        },
+        {
+          meme: `📋 «Братик, буквально на 5 минут!» — ${player.name} тормознули на секторе #30 и увезли на полигон в Учебку без получки!`,
+          clean: `📋 Внеплановая повестка на секторе #30: ${player.name} переезжает в Учебку!`,
+        },
+      ]);
+      this.addLog(room, 'SYSTEM', tckLandingMsg.meme, tckLandingMsg.clean, player);
       this.finishPostRollOrAdvance(room);
       return;
     }
@@ -1597,14 +1783,53 @@ export class GameManager {
       }
       case 'GOTO_JAIL': {
         tone = 'move';
-        effectLabel = 'Отправка в Изолятор 🚓';
-        cleanEffectLabel = 'Отправка в Камеру 🚓';
+        effectLabel = 'Путёвка в Учебку 🪖';
+        cleanEffectLabel = 'Отправка в Учебку 🪖';
         break;
       }
       case 'SKIP_TURN': {
         tone = 'bad';
         effectLabel = 'Пропуск следующего хода 🕯️';
         cleanEffectLabel = 'Пропуск следующего хода 🕯️';
+        break;
+      }
+      case 'REVERSE_MOVE': {
+        const turns = card.amount ?? 2;
+        tone = 'special';
+        effectLabel = `Задний ход на следующие ${turns} броска ⏪`;
+        cleanEffectLabel = `Движение в обратную сторону (${turns} броска) ⏪`;
+        break;
+      }
+      case 'SWAP_POSITION': {
+        const candidates = room.state.players.filter(
+          (p) => p.id !== player.id && !p.isBankrupt && !p.inJail
+        );
+        tone = 'move';
+        effectLabel =
+          candidates.length > 0
+            ? 'Рокировка: обмен клетками со случайным кентом 🔀'
+            : 'Все сидят по хатам — утешительный подгон +$600 💵';
+        cleanEffectLabel =
+          candidates.length > 0
+            ? 'Обмен позициями на поле со случайным соперником 🔀'
+            : 'Соперники недоступны для обмена: бонус +$600 💵';
+        break;
+      }
+      case 'GOTO_CASINO': {
+        tone = 'move';
+        effectLabel = 'Срочный телепорт в Казино 777 (#20) 🎰';
+        cleanEffectLabel = 'Мгновенное перемещение на сектор #20 «Казино 777» 🎰';
+        break;
+      }
+      case 'ASSET_DIVIDEND': {
+        const ownedActive = room.state.cells.filter(
+          (c) => c.ownerId === player.id && !c.isMortgaged
+        ).length;
+        const perProp = card.amount ?? 250;
+        const amt = Math.max(500, ownedActive * perProp);
+        tone = 'good';
+        effectLabel = `Дивиденды с точек (${ownedActive} шт.): +${formatMoney(amt)} 💼`;
+        cleanEffectLabel = effectLabel;
         break;
       }
     }
@@ -1783,13 +2008,16 @@ export class GameManager {
       }
       case 'EXTRA_TURN': {
         if (!player.inJail) {
-          room.state.hasExtraTurn = true;
+          this.addExtraTurn(room, 1);
         }
+        const totalExtra = room.state.extraTurnsLeft ?? (room.state.hasExtraTurn ? 1 : 0);
+        const streakSuffix =
+          totalExtra > 1 ? ` (всего в запасе: ${totalExtra} доп. ходов!)` : '';
         this.addLog(
           room,
           'CHANCE',
-          `${card.icon} ШАНС: «${card.title}» — ${player.name} залетает на дополнительный бросок!`,
-          `${card.icon} Шанс: «${card.cleanTitle}» — ${player.name} получает ещё один ход!`,
+          `${card.icon} ШАНС: «${card.title}» — ${player.name} залетает на дополнительный бросок${streakSuffix}!`,
+          `${card.icon} Шанс: «${card.cleanTitle}» — ${player.name} получает ещё один ход${streakSuffix}!`,
           player
         );
         this.finishPostRollOrAdvance(room);
@@ -1860,30 +2088,117 @@ export class GameManager {
         break;
       }
       case 'GOTO_JAIL': {
-        player.position = 10;
-        player.inJail = true;
-        player.jailTurns = 0;
-        player.doublesStreak = 0;
-        room.state.hasExtraTurn = false;
-        room.state.lastPoliceArrestAt = Date.now();
-        this.addLog(
+        const arrestFrom = player.position;
+        this.triggerPoliceArrest(
           room,
-          'CHANCE',
-          `🚓 «${card.title}» — ${player.name} улетает в изолятор!`,
-          `🚓 «${card.cleanTitle}» — ${player.name} отправляется в камеру!`,
-          player
+          player,
+          'CHANCE_CARD',
+          arrestFrom,
+          260,
+          undefined,
+          card.title,
+          card.cleanTitle
         );
+        const chanceArrestMsg = pickRandom([
+          {
+            meme: `🚐 «${card.title}» — ${player.name} погрузили в бусик и увезли в Учебку!`,
+            clean: `🚐 «${card.cleanTitle}» — ${player.name} отправляется в Учебку!`,
+          },
+          {
+            meme: `🪖 «${card.title}» — ${player.name} получил повестку без очереди и уехал в Учебку!`,
+            clean: `🪖 «${card.cleanTitle}» — ${player.name} переезжает на полигон в Учебку!`,
+          },
+          {
+            meme: `📋 «${card.title}» — данные ${player.name} «обновились» прямо до ворот Учебки!`,
+            clean: `📋 «${card.cleanTitle}» — ${player.name} направлен в Учебку!`,
+          },
+        ]);
+        this.addLog(room, 'CHANCE', chanceArrestMsg.meme, chanceArrestMsg.clean, player);
         this.finishPostRollOrAdvance(room);
         break;
       }
       case 'SKIP_TURN': {
         player.skipTurns += 1;
-        room.state.hasExtraTurn = false;
+        this.setExtraTurns(room, 0);
         this.addLog(
           room,
           'CHANCE',
           `${card.icon} «${card.title}» — ${player.name} пропустит следующий ход!`,
           `${card.icon} «${card.cleanTitle}» — ${player.name} пропустит следующий ход!`,
+          player
+        );
+        this.finishPostRollOrAdvance(room);
+        break;
+      }
+      case 'REVERSE_MOVE': {
+        const turns = card.amount ?? 2;
+        player.reverseTurns = (player.reverseTurns || 0) + turns;
+        this.addLog(
+          room,
+          'CHANCE',
+          `⏪ «${card.title}» — ${player.name} ходит ЗАДОМ НАПЕРЁД следующие ${turns} броска!`,
+          `⏪ «${card.cleanTitle}» — ${player.name} движется в обратном направлении следующие ${turns} броска!`,
+          player
+        );
+        this.finishPostRollOrAdvance(room);
+        break;
+      }
+      case 'SWAP_POSITION': {
+        const candidates = room.state.players.filter(
+          (p) => p.id !== player.id && !p.isBankrupt && !p.inJail
+        );
+        if (candidates.length > 0) {
+          const target = candidates[Math.floor(Math.random() * candidates.length)];
+          const myOldPos = player.position;
+          const theirOldPos = target.position;
+          player.position = theirOldPos;
+          target.position = myOldPos;
+          this.addLog(
+            room,
+            'CHANCE',
+            `🔀 «${card.title}» — ${player.name} и ${target.name} махнулись местами на доске (#${myOldPos} ⇄ #${theirOldPos})!`,
+            `🔀 «${card.cleanTitle}» — ${player.name} и ${target.name} поменялись клетками (#${myOldPos} ⇄ #${theirOldPos})!`,
+            player
+          );
+        } else {
+          player.cash += 600;
+          this.recordTransfer(room, 'BANK', player.id, 600, player.position);
+          this.addLog(
+            room,
+            'CHANCE',
+            `🔀 «${card.title}» — меняться не с кем, ${player.name} нашёл в чужой куртке +${formatMoney(600)}!`,
+            `🔀 «${card.cleanTitle}» — соперники недоступны, ${player.name} получает бонус +${formatMoney(600)}!`,
+            player
+          );
+        }
+        this.finishPostRollOrAdvance(room);
+        break;
+      }
+      case 'GOTO_CASINO': {
+        player.position = 20;
+        this.addLog(
+          room,
+          'CHANCE',
+          `🎰 «${card.title}» — ${player.name} врывается прямо в сектор #20 «Казино 777»!`,
+          `🎰 «${card.cleanTitle}» — ${player.name} перемещается на сектор #20 «Казино 777»!`,
+          player
+        );
+        this.resolveCellLanding(room, player, 20);
+        break;
+      }
+      case 'ASSET_DIVIDEND': {
+        const ownedActive = room.state.cells.filter(
+          (c) => c.ownerId === player.id && !c.isMortgaged
+        ).length;
+        const perProp = card.amount ?? 250;
+        const amt = Math.max(500, ownedActive * perProp);
+        player.cash += amt;
+        this.recordTransfer(room, 'BANK', player.id, amt, player.position);
+        this.addLog(
+          room,
+          'CHANCE',
+          `💼 «${card.title}» — ${player.name} собирает +${formatMoney(amt)} дивидендов со своих ${ownedActive} точек!`,
+          `💼 «${card.cleanTitle}» — ${player.name} получает +${formatMoney(amt)} дивидендов (${ownedActive} активов)!`,
           player
         );
         this.finishPostRollOrAdvance(room);
@@ -2124,6 +2439,7 @@ export class GameManager {
       cellId,
       isMortgagedAuction: false,
       sellerId: null,
+      initiatorId: player.id,
       currentBid: basePrice,
       highestBidderId: null,
       currentBidderId: participants[0],
@@ -2234,6 +2550,9 @@ export class GameManager {
     const auc = room.state.auction;
     if (!auc.activeParticipantIds.includes(playerId) || auc.passedIds.includes(playerId)) return;
     if (auc.currentBidderId && auc.currentBidderId !== playerId) return;
+    if (auc.initiatorId === playerId && auc.highestBidderId && auc.highestBidderId !== playerId) {
+      return;
+    }
 
     const player = room.state.players.find((p) => p.id === playerId);
     const step = Math.max(100, Math.round(stepAmount / 100) * 100);
@@ -2250,6 +2569,21 @@ export class GameManager {
       `💸 ${player.name} ставит ${formatMoney(nextBid)}!`,
       player
     );
+
+    // Игрок, выставивший карточку на аукцион, больше не может участвовать после того, как кто-то другой поставил ставку
+    if (auc.initiatorId && playerId !== auc.initiatorId && !auc.passedIds.includes(auc.initiatorId)) {
+      auc.passedIds.push(auc.initiatorId);
+      const initiator = room.state.players.find((p) => p.id === auc.initiatorId);
+      if (initiator) {
+        this.addLog(
+          room,
+          'AUCTION',
+          `🚫 ${initiator.name} выбывает из аукциона после чужой ставки.`,
+          `🚫 ${initiator.name} не может участвовать в торгах после ставки соперника.`,
+          initiator
+        );
+      }
+    }
 
     this.advanceAuctionTurn(room, playerId);
   }
@@ -2420,10 +2754,12 @@ export class GameManager {
   }
 
   public unmortgageProperty(room: ServerRoom, playerId: string, cellId: number) {
+    const check = canUnmortgageCell(room.state, playerId, cellId);
+    if (!check.ok) return;
     const def = BOARD_CELLS[cellId];
     const cell = room.state.cells[cellId];
     const player = room.state.players.find((p) => p.id === playerId);
-    if (!def || !cell || !player || cell.ownerId !== playerId || !cell.isMortgaged) return;
+    if (!def || !cell || !player) return;
 
     const cost = getUnmortgageCost(cellId);
     if (player.cash < cost) return;
@@ -2713,7 +3049,7 @@ export class GameManager {
 
     const principal = 5000;
     const paybackAmount = 6000;
-    const term = isSpeedRulesMode(room.state.settings) ? 6 : 8;
+    const term = 10;
 
     player.cash += principal;
     player.credit = {
@@ -3122,16 +3458,25 @@ export class GameManager {
   private finishPostRollOrAdvance(room: ServerRoom) {
     if (room.state.status !== 'PLAYING') return;
     const player = room.state.players[room.state.currentPlayerIndex];
-    if (player && room.state.hasExtraTurn && !player.inJail && !player.isBankrupt) {
+    const queuedExtraTurns =
+      room.state.extraTurnsLeft ?? (room.state.hasExtraTurn ? 1 : 0);
+    if (player && queuedExtraTurns > 0 && !player.inJail && !player.isBankrupt) {
+      const remainingAfter = queuedExtraTurns - 1;
+      this.setExtraTurns(room, remainingAfter);
       this.addLog(
         room,
         'DICE',
-        `🎲 Дубль! ${player.name} получает ещё один бросок.`,
-        `🎲 Дубль! ${player.name} бросает ещё раз.`,
+        `🎲 Доп. ход! ${player.name} получает ещё один бросок${
+          remainingAfter > 0 ? ` (в запасе ещё +${remainingAfter})` : ''
+        }.`,
+        `🎲 Доп. ход! ${player.name} бросает ещё раз${
+          remainingAfter > 0 ? ` (в запасе ещё +${remainingAfter})` : ''
+        }.`,
         player
       );
       this.beginTurn(room, room.state.currentPlayerIndex, true);
     } else {
+      this.setExtraTurns(room, 0);
       this.beginTurn(room, room.state.currentPlayerIndex + 1, false);
     }
   }
@@ -3169,6 +3514,7 @@ export class GameManager {
   ) {
     loser.isBankrupt = true;
     loser.inJail = false;
+    loser.reverseTurns = 0;
     loser.credit = null;
     this.bumpStat(loser, 'bankruptcies', 1);
 
@@ -3187,6 +3533,12 @@ export class GameManager {
         }
         if (creditor) {
           c.ownerId = creditor.id;
+          if (c.isMortgaged) {
+            c.mortgageRoundsLeft =
+              room.state.settings.mortgageLimitRounds > 0 && !room.state.settings.retroRules
+                ? room.state.settings.mortgageLimitRounds
+                : null;
+          }
         } else {
           c.ownerId = null;
           c.isMortgaged = false;
