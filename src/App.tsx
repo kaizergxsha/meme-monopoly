@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { BOARD_CELLS } from '../shared/boardData.ts';
 import { TAUNT_COOLDOWN_MS, TAUNTS } from '../shared/memeContent.ts';
 import { formatMoney, getTokenWalkDurationMs, txt } from '../shared/rules.ts';
+import { useCockpitMode } from './hooks/useCockpitMode.ts';
 import { useGameSocket } from './hooks/useGameSocket.ts';
 import { LobbyView } from './components/LobbyView.tsx';
 import { PlayersSidebar } from './components/PlayersSidebar.tsx';
@@ -34,11 +35,13 @@ export const App: React.FC = () => {
     actions,
   } = useGameSocket();
 
+  const { isCockpit } = useCockpitMode();
   const [selectedCellId, setSelectedCellId] = useState<number | null>(null);
   const [creditModalOpen, setCreditModalOpen] = useState(false);
   const [profileModalPlayerId, setProfileModalPlayerId] = useState<string | null>(null);
   const [avatarCreatorOpen, setAvatarCreatorOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'BOARD' | 'PLAYERS'>('BOARD');
+  const [mobileSoundpadExpanded, setMobileSoundpadExpanded] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const [tradeDraft, setTradeDraft] = useState<TradeDraftState>({
@@ -140,47 +143,49 @@ export const App: React.FC = () => {
         />
       ) : (
         <>
-          {/* Мобильный переключатель (< 1024px) */}
-          <div className="lg:hidden relative z-10 flex items-center justify-between gap-2 bg-[#0F1117]/92 backdrop-blur-xl border-b border-white/[0.08] py-1 px-2.5 shrink-0">
-            <div className="flex items-center gap-1.5">
-              {[
-                { id: 'BOARD' as const, label: '🎲 Поле' },
-                { id: 'PLAYERS' as const, label: `👥 Игроки (${roomState.players.length})` },
-              ].map((t) => (
+          {/* Портретный/мобильный переключатель (только когда не в ландшафтном кокпите) */}
+          {!isCockpit && (
+            <div className="relative z-10 flex items-center justify-between gap-2 bg-[#0F1117]/92 backdrop-blur-xl border-b border-white/[0.08] py-1 px-2.5 shrink-0">
+              <div className="flex items-center gap-1.5">
+                {[
+                  { id: 'BOARD' as const, label: '🎲 Поле' },
+                  { id: 'PLAYERS' as const, label: `👥 Игроки (${roomState.players.length})` },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setMobileTab(t.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
+                      mobileTab === t.id
+                        ? 'btn-emerald-3d text-white'
+                        : 'bg-[#161922] border border-white/10 text-neutral-300 hover:text-white'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[11px] font-mono-num font-bold text-[#E5B869]">
+                  #{roomState.code} · {roomState.round}р
+                </span>
                 <button
-                  key={t.id}
-                  onClick={() => setMobileTab(t.id)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition ${
-                    mobileTab === t.id
-                      ? 'btn-emerald-3d text-white'
-                      : 'bg-[#161922] border border-white/10 text-neutral-300 hover:text-white'
-                  }`}
+                  type="button"
+                  onClick={actions.leaveRoom}
+                  title="Покинуть комнату"
+                  aria-label="Покинуть комнату"
+                  className="w-6 h-6 rounded-full bg-[#161922] hover:bg-[#F43F5E] border border-white/12 text-neutral-300 hover:text-white text-[10px] font-bold flex items-center justify-center cursor-pointer transition"
                 >
-                  {t.label}
+                  ✕
                 </button>
-              ))}
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className="text-[11px] font-mono-num font-bold text-[#E5B869]">
-                #{roomState.code} · {roomState.round}р
-              </span>
-              <button
-                type="button"
-                onClick={actions.leaveRoom}
-                title="Покинуть комнату"
-                aria-label="Покинуть комнату"
-                className="w-6 h-6 rounded-full bg-[#161922] hover:bg-[#F43F5E] border border-white/12 text-neutral-300 hover:text-white text-[10px] font-bold flex items-center justify-center cursor-pointer transition"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
+          )}
 
-          {/* Мобильная компактная полоса игроков поверх поля (< 1024px) */}
-          {mobileTab === 'BOARD' && (
+          {/* Мобильная компактная полоса игроков поверх поля (только в портретной вкладке Поля) */}
+          {!isCockpit && mobileTab === 'BOARD' && (
             <div
               data-testid="mobile-players-strip"
-              className="lg:hidden relative z-10 flex items-center gap-1.5 px-2 py-1 bg-[#0C0E14]/90 backdrop-blur-xl border-b border-white/[0.07] overflow-x-auto chat-scrollbar shrink-0"
+              className="relative z-10 flex items-center gap-1.5 px-2 py-1 bg-[#0C0E14]/90 backdrop-blur-xl border-b border-white/[0.07] overflow-x-auto chat-scrollbar shrink-0"
             >
               {roomState.players.map((p, idx) => {
                 const isActive =
@@ -204,7 +209,7 @@ export const App: React.FC = () => {
                           }
                         : { borderLeftColor: p.color }
                     }
-                    className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-left transition cursor-pointer ${
+                    className={`shrink-0 flex items-center gap-1.5 px-2 py-0.5 rounded-xl border text-left transition cursor-pointer ${
                       p.isBankrupt
                         ? 'bg-[#0E1016] border-white/[0.06] opacity-50 text-neutral-500'
                         : isActive
@@ -235,11 +240,15 @@ export const App: React.FC = () => {
           )}
 
           {/* Единый сбалансированный игровой кокпит без пустой дыры между HUD игроков и полем */}
-          <div className="relative z-10 flex-1 min-h-0 w-full flex items-center justify-center gap-2 lg:gap-3 xl:gap-4 px-1 sm:px-3 overflow-hidden">
+          <div className="relative z-10 flex-1 min-h-0 w-full flex items-center justify-center gap-1.5 sm:gap-2.5 xl:gap-4 px-0.5 sm:px-2 xl:px-3 overflow-hidden">
             <div
               className={`${
-                mobileTab === 'PLAYERS' ? 'flex w-full justify-center' : 'hidden'
-              } lg:flex h-full shrink-0 items-center`}
+                isCockpit
+                  ? 'flex h-full shrink-0 items-center'
+                  : mobileTab === 'PLAYERS'
+                  ? 'flex w-full h-full justify-center'
+                  : 'hidden'
+              }`}
             >
               <PlayersSidebar
                 roomState={roomState}
@@ -260,8 +269,12 @@ export const App: React.FC = () => {
 
             <div
               className={`${
-                mobileTab === 'BOARD' ? 'flex' : 'hidden'
-              } lg:flex flex-1 lg:flex-none min-w-0 h-full items-center justify-center overflow-hidden lg:overflow-visible`}
+                isCockpit
+                  ? 'flex flex-none h-full items-center justify-center overflow-visible'
+                  : mobileTab === 'BOARD'
+                  ? 'flex flex-1 min-w-0 h-full items-center justify-center overflow-hidden'
+                  : 'hidden'
+              }`}
             >
               <BoardGrid
                 roomState={roomState}
@@ -303,8 +316,8 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Мобильная нижняя панель быстрого управления под палец (< 1024px) */}
-          {mobileTab === 'BOARD' &&
+          {/* Портретная нижняя панель быстрого управления под палец (только когда не в кокпите) */}
+          {!isCockpit && mobileTab === 'BOARD' &&
             (() => {
               const curPlayer = roomState.players[roomState.currentPlayerIndex];
               const isMyTurn = curPlayer?.id === profile.playerId;
@@ -338,7 +351,7 @@ export const App: React.FC = () => {
               return (
                 <div
                   data-testid="mobile-action-dock"
-                  className="lg:hidden bg-[#0F1117]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2 py-1.5 space-y-1 shrink-0 z-20"
+                  className="bg-[#0F1117]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2 py-1 space-y-1 shrink-0 z-20"
                 >
                   {!tradeDraft.open &&
                   !isWalkingAfterRoll &&
@@ -587,17 +600,32 @@ export const App: React.FC = () => {
                   {me && !me.isBankrupt && roomState.status === 'PLAYING' && (
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center justify-between px-0.5 text-[8.5px] uppercase tracking-[0.12em] text-neutral-500 font-bold leading-none">
-                        <span>Soundpad Deck</span>
-                        {tauntCooldownLeft > 0 ? (
-                          <span className="font-mono-num text-[#E5B869] normal-case tracking-normal">
-                            ⏳ {tauntCooldownLeft}с
-                          </span>
-                        ) : (
-                          <span className="font-mono-num text-[#10B981]">LIVE</span>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          <span>Soundpad Deck</span>
+                          {tauntCooldownLeft > 0 ? (
+                            <span className="font-mono-num text-[#E5B869] normal-case tracking-normal">
+                              ⏳ {tauntCooldownLeft}с
+                            </span>
+                          ) : (
+                            <span className="font-mono-num text-[#10B981]">LIVE</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMobileSoundpadExpanded((v) => !v)}
+                          className="normal-case tracking-normal text-[9.5px] text-neutral-300 hover:text-white px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/10 cursor-pointer"
+                        >
+                          {mobileSoundpadExpanded ? '▲ Свернуть' : '⊞ Все 16'}
+                        </button>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-1 min-w-0 max-h-[86px] overflow-y-auto chat-scrollbar pr-0.5">
+                      <div
+                        className={
+                          mobileSoundpadExpanded
+                            ? 'grid grid-cols-3 gap-1 min-w-0 max-h-[112px] overflow-y-auto chat-scrollbar pr-0.5'
+                            : 'flex items-center gap-1 min-w-0 overflow-x-auto chat-scrollbar pb-0.5'
+                        }
+                      >
                         {TAUNTS.map((pad) => (
                           <button
                             key={pad.id}
@@ -605,7 +633,9 @@ export const App: React.FC = () => {
                             data-testid={`mobile-taunt-${pad.id}`}
                             disabled={tauntCooldownLeft > 0}
                             onClick={() => actions.sendTaunt(pad.id)}
-                            className="streamdeck-pad min-w-0 py-1 pl-2 pr-1 rounded-lg overflow-hidden disabled:opacity-35 text-[#F1F5F9] text-[9px] font-bold flex items-center justify-center gap-1 cursor-pointer leading-[1.08]"
+                            className={`streamdeck-pad relative py-1 pl-2 pr-1.5 rounded-lg overflow-hidden disabled:opacity-35 text-[#F1F5F9] text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer leading-[1.08] ${
+                              mobileSoundpadExpanded ? 'min-w-0' : 'shrink-0 whitespace-nowrap'
+                            }`}
                           >
                             <span
                               aria-hidden="true"
@@ -615,7 +645,7 @@ export const App: React.FC = () => {
                               }}
                               className="pointer-events-none absolute left-0 inset-y-1 w-[2.5px] rounded-r-full"
                             />
-                            <span className="min-w-0 whitespace-normal break-words text-center inline-flex items-center justify-center gap-1">
+                            <span className="min-w-0 whitespace-nowrap text-center inline-flex items-center justify-center gap-1">
                               <AppleEmoji emoji={pad.emoji} />
                               <span>{pad.label}</span>
                             </span>
