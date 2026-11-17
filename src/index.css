@@ -82,14 +82,14 @@
 @keyframes diceRollAnim {
   0% {
     opacity: 0;
-    transform: translateY(28px) rotate(-28deg) scale(0.55);
+    transform: translateY(24px) rotate(-22deg) scale(0.62);
   }
-  35% {
+  42% {
     opacity: 1;
-    transform: translateY(-10px) rotate(14deg) scale(1.14);
+    transform: translateY(-7px) rotate(10deg) scale(1.09);
   }
-  68% {
-    transform: translateY(3px) rotate(-6deg) scale(0.96);
+  74% {
+    transform: translateY(2px) rotate(-3deg) scale(0.98);
   }
   100% {
     opacity: 1;
@@ -98,13 +98,13 @@
 }
 
 .animate-dice-roll {
-  animation: diceRollAnim 0.48s cubic-bezier(0.22, 1.4, 0.36, 1) both;
+  animation: diceRollAnim 0.54s cubic-bezier(0.18, 1.22, 0.32, 1) both;
 }
 
 @keyframes actionCardSlide {
   0% {
     opacity: 0;
-    transform: translateY(-14px) scale(0.98);
+    transform: translateY(-8px) scale(0.965);
   }
   100% {
     opacity: 1;
@@ -113,7 +113,7 @@
 }
 
 .animate-action-card {
-  animation: actionCardSlide 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: actionCardSlide 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes tokenStepHop {
@@ -121,12 +121,12 @@
     transform: translateY(0) scale(1);
     filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45));
   }
-  42% {
-    transform: translateY(-10px) scale(1.24) rotate(-5deg);
-    filter: drop-shadow(0 12px 10px rgba(0, 0, 0, 0.55));
+  45% {
+    transform: translateY(-8px) scale(1.18) rotate(-3deg);
+    filter: drop-shadow(0 10px 9px rgba(0, 0, 0, 0.55));
   }
-  75% {
-    transform: translateY(-3px) scale(1.06) rotate(2deg);
+  80% {
+    transform: translateY(-1.5px) scale(1.03) rotate(1deg);
   }
   100% {
     transform: translateY(0) scale(1) rotate(0deg);
@@ -135,37 +135,50 @@
 }
 
 .animate-token-hop {
-  animation: tokenStepHop 0.125s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: tokenStepHop 0.095s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 @keyframes tokenStepTrail {
   0% {
-    opacity: 0.85;
-    transform: translate(-50%, -50%) scale(0.55);
+    opacity: 0.78;
+    transform: translate(-50%, -50%) scale(0.6);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(1.7);
+    transform: translate(-50%, -50%) scale(1.85);
   }
 }
 
 .animate-token-trail {
-  animation: tokenStepTrail 0.42s ease-out forwards;
+  animation: tokenStepTrail 0.52s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes tokenLandWave {
   0% {
-    opacity: 0.95;
+    opacity: 0.9;
     transform: translate(-50%, -50%) scale(0.65);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(2.45);
+    transform: translate(-50%, -50%) scale(2.6);
   }
 }
 
 .animate-token-land {
-  animation: tokenLandWave 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: tokenLandWave 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes arcFadeOut {
+  0% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-arc-fade {
+  animation: arcFadeOut 0.45s ease-out forwards;
 }
 
 @keyframes tokenActivePulse {
@@ -185,8 +198,12 @@
 
 @keyframes tabPriceFlip {
   0% {
-    opacity: 0.2;
-    transform: translateY(5px) scale(0.92);
+    opacity: 0.25;
+    transform: translateY(5px) scale(0.9);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-1px) scale(1.04);
   }
   100% {
     opacity: 1;
@@ -195,7 +212,7 @@
 }
 
 .animate-tab-flip {
-  animation: tabPriceFlip 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: tabPriceFlip 0.36s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes cashDeltaFloat {
@@ -280,46 +297,95 @@
   animation: boardShakeImpact 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
-@keyframes diceTumbleAnim {
+@keyframes diceLiquidThrowA {
   0% {
-    transform: scale(0.86) rotate(-14deg);
+    opacity: 0;
+    transform: translate3d(-14px, 38px, -70px) rotateX(68deg) rotateY(-48deg) rotateZ(-28deg) scale(0.56);
+    filter: blur(2px);
   }
-  45% {
-    transform: scale(1.16) rotate(10deg);
+  38% {
+    opacity: 1;
+    transform: translate3d(3px, -11px, 26px) rotateX(-16deg) rotateY(16deg) rotateZ(11deg) scale(1.09);
+    filter: blur(0px);
   }
-  75% {
-    transform: scale(0.95) rotate(-5deg);
+  70% {
+    transform: translate3d(-1px, 3px, 4px) rotateX(5deg) rotateY(-5deg) rotateZ(-3deg) scale(0.98);
   }
   100% {
-    transform: scale(1) rotate(0deg);
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotateX(0deg) rotateY(0deg) rotateZ(-2deg) scale(1);
   }
 }
 
-.animate-dice-tumble {
-  animation: diceTumbleAnim 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+@keyframes diceLiquidThrowB {
+  0% {
+    opacity: 0;
+    transform: translate3d(14px, 42px, -70px) rotateX(-64deg) rotateY(52deg) rotateZ(30deg) scale(0.54);
+    filter: blur(2px);
+  }
+  42% {
+    opacity: 1;
+    transform: translate3d(-3px, -13px, 28px) rotateX(15deg) rotateY(-18deg) rotateZ(-10deg) scale(1.1);
+    filter: blur(0px);
+  }
+  74% {
+    transform: translate3d(1px, 3px, 4px) rotateX(-5deg) rotateY(5deg) rotateZ(4deg) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotateX(0deg) rotateY(0deg) rotateZ(3deg) scale(1);
+  }
+}
+
+@keyframes glassSheenSweep {
+  0% {
+    transform: translateX(-140%) skewX(-22deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateX(220%) skewX(-22deg);
+    opacity: 0;
+  }
+}
+
+.animate-dice-throw-a {
+  transform-style: preserve-3d;
+  animation: diceLiquidThrowA 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-dice-throw-b {
+  transform-style: preserve-3d;
+  animation: diceLiquidThrowB 0.56s cubic-bezier(0.16, 1, 0.3, 1) 0.055s both;
+}
+
+.animate-glass-sheen {
+  animation: glassSheenSweep 0.72s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
 }
 
 @keyframes cashFlyBurst {
   0% {
     opacity: 0;
-    transform: translate(-50%, 6px) scale(0.75);
+    transform: translate(-50%, 8px) scale(0.78);
   }
   18% {
     opacity: 1;
-    transform: translate(-50%, -10px) scale(1.12);
+    transform: translate(-50%, -10px) scale(1.08);
   }
-  75% {
+  78% {
     opacity: 1;
-    transform: translate(-50%, -26px) scale(1);
+    transform: translate(-50%, -28px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -44px) scale(0.9);
+    transform: translate(-50%, -46px) scale(0.92);
   }
 }
 
 .animate-cash-fly {
-  animation: cashFlyBurst 1.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: cashFlyBurst 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes policeSirenFlash {
@@ -348,7 +414,7 @@
   }
   65% {
     opacity: 1;
-    transform: scale(1.18) translateY(-1px);
+    transform: scale(1.14) translateY(-1px);
   }
   100% {
     opacity: 1;
@@ -357,7 +423,7 @@
 }
 
 .animate-pop-in {
-  animation: popBuildIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: popBuildIn 0.38s cubic-bezier(0.22, 1.28, 0.36, 1) both;
 }
 
 .glass-panel {

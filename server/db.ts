@@ -228,7 +228,7 @@ export async function initDb(): Promise<void> {
           nickname: String(row.nickname || 'Гость'),
           avatar: String(row.avatar || '🐸'),
           color: String(row.color || '#dc2626'),
-          diceSkin: (String(row.dice_skin || 'classic') as DiceSkin),
+          diceSkin: (String(row.dice_skin || 'liquid_glass') as DiceSkin),
           gamesPlayed: Number(row.games_played) || 0,
           createdAt: Number(row.created_at) || Number(row.updated_at) || Date.now(),
           updatedAt: Number(row.updated_at) || Date.now(),
@@ -381,7 +381,7 @@ export function upsertPlayerProfile(
   if (!db) {
     const cur = fallbackProfiles.get(playerId);
     const finalColor = color || cur?.color || '#dc2626';
-    const finalDiceSkin = diceSkin || cur?.diceSkin || 'classic';
+    const finalDiceSkin = diceSkin || cur?.diceSkin || 'liquid_glass';
     const finalCreatedAt = cur?.createdAt && cur.createdAt > 0 ? cur.createdAt : now;
     fallbackProfiles.set(playerId, {
       playerId,
@@ -414,7 +414,7 @@ export function upsertPlayerProfile(
       .get(playerId) as { color?: string; diceSkin?: string; createdAt?: number } | undefined;
 
     const finalColor = color || existing?.color || '#dc2626';
-    const finalDiceSkin = diceSkin || existing?.diceSkin || 'classic';
+    const finalDiceSkin = diceSkin || existing?.diceSkin || 'liquid_glass';
     const finalCreatedAt = existing?.createdAt && existing.createdAt > 0 ? existing.createdAt : now;
 
     const stmt = db.prepare(`
@@ -444,7 +444,7 @@ export function getPlayerProfile(playerId: string): PlayerProfileData {
       nickname: cur?.nickname || 'Гость',
       avatar: cur?.avatar || '🐸',
       color: cur?.color || '#dc2626',
-      diceSkin: cur?.diceSkin || 'classic',
+      diceSkin: cur?.diceSkin || 'liquid_glass',
       gamesPlayed: cur?.gamesPlayed || 0,
       wins: stats.wins,
       createdAt: cur?.createdAt || now,
@@ -462,7 +462,7 @@ export function getPlayerProfile(playerId: string): PlayerProfileData {
            p.nickname as nickname,
            p.avatar as avatar,
            COALESCE(p.color, '#dc2626') as color,
-           COALESCE(p.dice_skin, 'classic') as diceSkin,
+           COALESCE(p.dice_skin, 'liquid_glass') as diceSkin,
            COALESCE(p.games_played, 0) as gamesPlayed,
            COALESCE(p.wins, 0) as wins,
            COALESCE(p.cells_bought, 0) as cellsBought,
@@ -487,7 +487,7 @@ export function getPlayerProfile(playerId: string): PlayerProfileData {
         nickname: 'Гость',
         avatar: '🐸',
         color: '#dc2626',
-        diceSkin: 'classic',
+        diceSkin: 'liquid_glass',
         gamesPlayed: 0,
         wins: 0,
         createdAt: now,
@@ -503,7 +503,7 @@ export function getPlayerProfile(playerId: string): PlayerProfileData {
       nickname: String(row.nickname || 'Гость'),
       avatar: String(row.avatar || '🐸'),
       color: String(row.color || '#dc2626'),
-      diceSkin: (String(row.diceSkin || 'classic') as DiceSkin),
+      diceSkin: (String(row.diceSkin || 'liquid_glass') as DiceSkin),
       gamesPlayed: Number(row.gamesPlayed) || 0,
       wins,
       createdAt: Number(row.createdAt) || Number(row.updatedAt) || now,
@@ -524,7 +524,7 @@ export function getPlayerProfile(playerId: string): PlayerProfileData {
       nickname: 'Гость',
       avatar: '🐸',
       color: '#dc2626',
-      diceSkin: 'classic',
+      diceSkin: 'liquid_glass',
       gamesPlayed: 0,
       wins: 0,
       createdAt: now,

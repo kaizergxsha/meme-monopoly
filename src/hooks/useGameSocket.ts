@@ -70,7 +70,7 @@ export function useGameSocket() {
       name: getOrCreateGuestName(),
       avatar: localStorage.getItem('mm_avatar') || MEME_AVATARS[0].emoji,
       color: validColor,
-      diceSkin: (localStorage.getItem('mm_dice_skin') as DiceSkin) || 'classic',
+      diceSkin: (localStorage.getItem('mm_dice_skin') as DiceSkin) || 'liquid_glass',
     };
   });
 

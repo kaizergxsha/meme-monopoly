@@ -353,26 +353,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
               <div className="space-y-3 pt-1">
                 <div>
-                  <div className="text-[11px] font-bold text-neutral-400 mb-1.5">Цвет фишки</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {TOKEN_COLORS.map((c) => (
-                      <button
-                        key={c.hex}
-                        type="button"
-                        title={c.name}
-                        onClick={() => onUpdateProfile({ color: c.hex })}
-                        style={{ backgroundColor: c.hex }}
-                        className={`w-7 h-7 rounded-lg border transition cursor-pointer ${
-                          myProfile.color === c.hex
-                            ? 'ring-2 ring-[#E5B869] border-white scale-110'
-                            : 'border-white/25 opacity-80 hover:opacity-100'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
                   <div className="text-[11px] font-bold text-neutral-400 mb-1.5">Скин кубиков</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {DICE_SKINS.map((sk, idx) => {
@@ -571,7 +551,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                   {authTab === 'register' && (
                     <div className="text-[10.5px] text-neutral-400 leading-snug">
-                      Ваша аватарка, цвет фишки и вся гостевая статистика автоматически привяжутся к
+                      Ваша аватарка, скин кубиков и вся гостевая статистика автоматически привяжутся к
                       новому аккаунту.
                     </div>
                   )}

@@ -362,13 +362,33 @@ class SoundEngine {
     return this.muted;
   }
 
+  private masterGain: GainNode | null = null;
+
+  private ensureMasterBus(ctx: AudioContext): AudioNode {
+    if (this.masterGain) return this.masterGain;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.setValueAtTime(-14, ctx.currentTime);
+    comp.knee.setValueAtTime(18, ctx.currentTime);
+    comp.ratio.setValueAtTime(4, ctx.currentTime);
+    comp.attack.setValueAtTime(0.004, ctx.currentTime);
+    comp.release.setValueAtTime(0.18, ctx.currentTime);
+
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.9, ctx.currentTime);
+    master.connect(comp);
+    comp.connect(ctx.destination);
+    this.masterGain = master;
+    return master;
+  }
+
   private playTone(
     freq: number,
     duration: number,
     type: OscillatorType = 'triangle',
     delay = 0,
     gainVal = 0.14,
-    slideToFreq?: number
+    slideToFreq?: number,
+    filterCutoff?: number
   ) {
     const ctx = this.ensureCtx();
     if (!ctx) return;
@@ -378,31 +398,111 @@ class SoundEngine {
     osc.type = type;
     osc.frequency.setValueAtTime(freq, now);
     if (slideToFreq) {
-      osc.frequency.linearRampToValueAtTime(slideToFreq, now + duration);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideToFreq), now + duration);
     }
-    const attack = Math.min(0.005, duration * 0.2);
+
+    const attack = Math.min(0.008, duration * 0.2);
     gain.gain.setValueAtTime(0.0001, now);
     gain.gain.linearRampToValueAtTime(gainVal, now + attack);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.onended = () => {
-      osc.disconnect();
-      gain.disconnect();
-    };
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+    const dest = this.ensureMasterBus(ctx);
+    if (filterCutoff || type === 'sawtooth' || type === 'square') {
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      const startCut = filterCutoff ?? (type === 'sawtooth' ? 1400 : 1800);
+      filter.frequency.setValueAtTime(startCut, now);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(240, startCut * 0.45), now + duration);
+      filter.Q.setValueAtTime(1.2, now);
+      osc.connect(filter);
+      filter.connect(gain);
+      osc.onended = () => {
+        osc.disconnect();
+        filter.disconnect();
+        gain.disconnect();
+      };
+    } else {
+      osc.connect(gain);
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
+    }
+
+    gain.connect(dest);
     osc.start(now);
-    osc.stop(now + duration + 0.02);
+    osc.stop(now + duration + 0.03);
   }
 
-  private playCardFlipSwish() {
+  // Тёплый стерео-голос с детюном и фильтром для дорогих UI-аккордов
+  private playLuxuryVoice(
+    freq: number,
+    duration: number,
+    delay = 0,
+    gainVal = 0.1,
+    cutoff = 2600
+  ) {
     const ctx = this.ensureCtx();
     if (!ctx) return;
-    const dur = 0.065;
-    const sampleCount = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const now = ctx.currentTime + delay;
+    const dest = this.ensureMasterBus(ctx);
+
+    const oscA = ctx.createOscillator();
+    const oscB = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+
+    oscA.type = 'triangle';
+    oscB.type = 'sine';
+    oscA.frequency.setValueAtTime(freq, now);
+    oscB.frequency.setValueAtTime(freq * 1.0035, now); // мягкий хорус-детюн
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(cutoff, now);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(320, cutoff * 0.35), now + duration);
+    filter.Q.setValueAtTime(0.9, now);
+
+    const attack = Math.min(0.012, duration * 0.22);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(gainVal, now + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+    oscA.connect(filter);
+    oscB.connect(filter);
+    filter.connect(gain);
+    gain.connect(dest);
+
+    oscA.onended = () => {
+      oscA.disconnect();
+      oscB.disconnect();
+      filter.disconnect();
+      gain.disconnect();
+    };
+
+    oscA.start(now);
+    oscB.start(now);
+    oscA.stop(now + duration + 0.03);
+    oscB.stop(now + duration + 0.03);
+  }
+
+  // Короткий фильтрованный шумовой транзиент (щелчок костей, свайп карты, удар замка)
+  private playNoiseBurst(
+    duration: number,
+    delay: number,
+    startFreq: number,
+    endFreq: number,
+    q = 2.0,
+    gainVal = 0.14,
+    filterType: BiquadFilterType = 'bandpass'
+  ) {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime + delay;
+    const sampleCount = Math.max(1, Math.floor(ctx.sampleRate * duration));
     const noiseBuf = ctx.createBuffer(1, sampleCount, ctx.sampleRate);
     const data = noiseBuf.getChannelData(0);
     for (let i = 0; i < sampleCount; i++) {
-      const env = Math.sin((Math.PI * i) / sampleCount);
+      const env = Math.pow(1 - i / sampleCount, 1.4);
       data[i] = (Math.random() * 2 - 1) * env;
     }
 
@@ -410,30 +510,45 @@ class SoundEngine {
     src.buffer = noiseBuf;
 
     const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.Q.setValueAtTime(2.2, ctx.currentTime);
-    filter.frequency.setValueAtTime(650, ctx.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(2800, ctx.currentTime + dur);
+    filter.type = filterType;
+    filter.Q.setValueAtTime(q, now);
+    filter.frequency.setValueAtTime(startFreq, now);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(60, endFreq), now + duration);
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.14, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    gain.gain.setValueAtTime(gainVal, now);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
 
     src.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.ensureMasterBus(ctx));
     src.onended = () => {
       src.disconnect();
       filter.disconnect();
       gain.disconnect();
     };
-    src.start(ctx.currentTime);
+    src.start(now);
   }
 
+  private playCardFlipSwish() {
+    this.playNoiseBurst(0.085, 0, 750, 3200, 1.8, 0.13, 'bandpass');
+  }
+
+  // Тактильный перестук тяжёлых акриловых кубиков по сукну стола
   public playDice() {
-    this.playTone(280, 0.06, 'square', 0, 0.08, 420);
-    this.playTone(360, 0.06, 'square', 0.07, 0.08, 520);
-    this.playTone(490, 0.09, 'triangle', 0.14, 0.11, 640);
+    if (this.muted) return;
+    const taps = [
+      { t: 0.0, f: 245, n: 1950, g: 0.16 },
+      { t: 0.052, f: 315, n: 2350, g: 0.14 },
+      { t: 0.112, f: 270, n: 2100, g: 0.12 },
+      { t: 0.182, f: 195, n: 1500, g: 0.15 },
+    ];
+    for (const tap of taps) {
+      this.playNoiseBurst(0.028, tap.t, tap.n, tap.n * 0.45, 3.2, tap.g, 'bandpass');
+      this.playTone(tap.f, 0.042, 'triangle', tap.t, 0.1, tap.f * 0.58);
+    }
+    // Мягкий вес сукна в финале броска
+    this.playTone(96, 0.09, 'sine', 0.18, 0.14, 48);
   }
 
   public playCash() {
@@ -443,63 +558,70 @@ class SoundEngine {
   // Звук начисления денег (загруженный трек /sounds/gain.mp3, слышит только получатель)
   public playCashGain() {
     this.playClip(PRELOAD_SOUNDS.gain, 0.7, () => {
-      this.playTone(1046.5, 0.14, 'sine', 0, 0.16);
-      this.playTone(1318.51, 0.14, 'sine', 0.075, 0.17);
-      this.playTone(1567.98, 0.16, 'sine', 0.15, 0.18);
-      this.playTone(2093.0, 0.34, 'sine', 0.225, 0.2);
+      this.playLuxuryVoice(1046.5, 0.18, 0, 0.12, 3400);
+      this.playLuxuryVoice(1318.51, 0.18, 0.065, 0.13, 3800);
+      this.playLuxuryVoice(1567.98, 0.22, 0.13, 0.14, 4200);
+      this.playLuxuryVoice(2093.0, 0.42, 0.195, 0.16, 4800);
     });
   }
 
   // Звук оплаты / траты денег (загруженный трек /sounds/spend.mp3, слышит только плательщик)
   public playCashSpend() {
     this.playClip(PRELOAD_SOUNDS.spend, 0.7, () => {
-      this.playTone(1318.51, 0.16, 'sine', 0, 0.18);
-      this.playTone(1975.53, 0.42, 'sine', 0.095, 0.21);
+      this.playLuxuryVoice(1174.66, 0.16, 0, 0.13, 2800);
+      this.playLuxuryVoice(880.0, 0.34, 0.085, 0.14, 2200);
     });
   }
 
+  // Попадание в Учебку / облава ТЦК: тяжёлый sub-slam + лязг засова + тёплая кинематографичная сирена
   public playSiren() {
-    this.playTone(620, 0.22, 'sawtooth', 0, 0.09, 920);
-    this.playTone(920, 0.22, 'sawtooth', 0.22, 0.09, 620);
+    if (this.muted) return;
+    // Тяжёлый удар ворот Учебки
+    this.playTone(135, 0.36, 'sine', 0, 0.24, 38);
+    this.playNoiseBurst(0.11, 0.01, 1400, 260, 1.5, 0.2, 'lowpass');
+    // Металлический засов
+    this.playTone(980, 0.14, 'triangle', 0.04, 0.08, 420, 1800);
+    // Современная фильтрованная сирена (2 цикла)
+    this.playTone(540, 0.26, 'sawtooth', 0.12, 0.085, 840, 1350);
+    this.playTone(840, 0.26, 'sawtooth', 0.38, 0.085, 520, 1150);
+    this.playTone(540, 0.24, 'sawtooth', 0.64, 0.075, 800, 1200);
+    this.playTone(800, 0.3, 'sawtooth', 0.88, 0.065, 480, 950);
   }
 
-  // Грустный тромбон («Инвестировал в говно»)
+  // Грустный тромбон («Инвестировал в говно») через тёплый духовой lowpass-фильтр
   public playSadTrombone() {
-    this.playTone(293.66, 0.28, 'sawtooth', 0, 0.13); // D4
-    this.playTone(277.18, 0.28, 'sawtooth', 0.3, 0.13); // C#4
-    this.playTone(261.63, 0.28, 'sawtooth', 0.6, 0.13); // C4
-    this.playTone(246.94, 0.75, 'sawtooth', 0.9, 0.15, 220); // B3 -> slide
+    this.playTone(293.66, 0.28, 'sawtooth', 0, 0.13, undefined, 980);
+    this.playTone(277.18, 0.28, 'sawtooth', 0.3, 0.13, undefined, 920);
+    this.playTone(261.63, 0.28, 'sawtooth', 0.6, 0.13, undefined, 860);
+    this.playTone(246.94, 0.82, 'sawtooth', 0.9, 0.15, 216, 760);
   }
 
-  // Приятный звук переворота и открытия карточки «Шанс»
+  // Премиальный звук переворота и открытия карточки «Шанс»
   public playChanceReveal(tone: 'good' | 'bad' | 'move' | 'special' = 'special') {
     if (this.muted) return;
     this.playCardFlipSwish();
-    this.playTone(300, 0.055, 'triangle', 0, 0.08, 860);
+    this.playTone(320, 0.06, 'sine', 0, 0.07, 780);
 
     if (tone === 'good') {
-      // Светлый мажорный перелив удачи
-      this.playTone(523.25, 0.12, 'sine', 0.055, 0.13);
-      this.playTone(659.25, 0.12, 'sine', 0.115, 0.14);
-      this.playTone(783.99, 0.14, 'sine', 0.175, 0.15);
-      this.playTone(1046.5, 0.28, 'triangle', 0.24, 0.16);
+      this.playLuxuryVoice(523.25, 0.18, 0.045, 0.11, 3200);
+      this.playLuxuryVoice(659.25, 0.18, 0.1, 0.12, 3600);
+      this.playLuxuryVoice(783.99, 0.22, 0.155, 0.12, 4000);
+      this.playLuxuryVoice(1046.5, 0.38, 0.215, 0.14, 4600);
     } else if (tone === 'bad') {
-      // Ироничный драматический мини-аккорд подставы
-      this.playTone(659.25, 0.12, 'triangle', 0.055, 0.13);
-      this.playTone(622.25, 0.12, 'triangle', 0.125, 0.13);
-      this.playTone(523.25, 0.14, 'triangle', 0.195, 0.14);
-      this.playTone(440.0, 0.3, 'sawtooth', 0.27, 0.09, 392.0);
+      this.playLuxuryVoice(587.33, 0.16, 0.05, 0.11, 1900);
+      this.playLuxuryVoice(554.37, 0.16, 0.12, 0.11, 1700);
+      this.playLuxuryVoice(440.0, 0.22, 0.19, 0.12, 1500);
+      this.playTone(130.81, 0.42, 'sawtooth', 0.24, 0.12, 108, 680);
     } else if (tone === 'move') {
-      // Стремительный звук телепорта / перемещения фишки
-      this.playTone(587.33, 0.09, 'triangle', 0.055, 0.12, 783.99);
-      this.playTone(783.99, 0.1, 'triangle', 0.125, 0.13, 987.77);
-      this.playTone(987.77, 0.22, 'sine', 0.2, 0.15, 1174.66);
+      this.playNoiseBurst(0.24, 0.04, 400, 2600, 2.2, 0.12, 'bandpass');
+      this.playLuxuryVoice(587.33, 0.12, 0.05, 0.1, 2800);
+      this.playLuxuryVoice(783.99, 0.14, 0.11, 0.11, 3400);
+      this.playLuxuryVoice(1174.66, 0.28, 0.18, 0.13, 4200);
     } else {
-      // Загадочный мерцающий аккорд карточки «Шанс»
-      this.playTone(698.46, 0.12, 'sine', 0.055, 0.13);
-      this.playTone(880.0, 0.12, 'sine', 0.115, 0.14);
-      this.playTone(1046.5, 0.14, 'sine', 0.175, 0.14);
-      this.playTone(1318.51, 0.28, 'triangle', 0.24, 0.15);
+      this.playLuxuryVoice(698.46, 0.18, 0.045, 0.1, 3000);
+      this.playLuxuryVoice(880.0, 0.18, 0.1, 0.11, 3400);
+      this.playLuxuryVoice(1046.5, 0.22, 0.155, 0.12, 3800);
+      this.playLuxuryVoice(1318.51, 0.36, 0.215, 0.13, 4400);
     }
   }
 
@@ -518,7 +640,7 @@ class SoundEngine {
       0.95,
       () => {
         this.speakFallback(cfg.phrase, cfg.pitch, 1.2, () => {
-          this.playTone(440, 0.14, 'triangle', 0, 0.12);
+          this.playLuxuryVoice(440, 0.16, 0, 0.11, 2200);
         });
       },
       (stopFn) => {
@@ -527,33 +649,37 @@ class SoundEngine {
     );
   }
 
+  // Швейцарский тактильный клик для таймера и шагов
   public playTick() {
     if (this.muted) return;
-    this.playTone(880, 0.045, 'sine', 0, 0.08, 660);
+    this.playNoiseBurst(0.014, 0, 2600, 1200, 2.5, 0.07, 'highpass');
+    this.playTone(1320, 0.032, 'sine', 0, 0.065, 680);
   }
 
+  // Дорогое золотое подтверждение постройки филиала / улучшения
   public playBuild() {
     if (this.muted) return;
-    [440, 554.37, 659.25].forEach((f, i) =>
-      this.playTone(f, 0.11, 'triangle', i * 0.055, 0.13)
+    this.playNoiseBurst(0.025, 0, 1800, 900, 2.0, 0.08, 'bandpass');
+    this.playTone(110, 0.12, 'sine', 0, 0.12, 72);
+    [440, 554.37, 659.25, 987.77].forEach((f, i) =>
+      this.playLuxuryVoice(f, 0.24, i * 0.048, 0.11, 3400)
     );
   }
 
   public playBankruptcy(style: 'eralash' | 'curb' | 'wasted') {
     if (style === 'wasted') {
-      // GTA Wasted тяжёлый басовый удар
-      this.playTone(110, 0.9, 'sawtooth', 0, 0.22, 48);
-      this.playTone(65, 1.1, 'sine', 0.05, 0.25, 38);
+      // GTA Wasted кинематографичный басовый удар + шумовой спад
+      this.playNoiseBurst(0.35, 0, 900, 120, 1.2, 0.2, 'lowpass');
+      this.playTone(110, 0.95, 'sawtooth', 0, 0.2, 46, 520);
+      this.playTone(65, 1.15, 'sine', 0.04, 0.26, 36);
     } else if (style === 'eralash') {
-      // Пара-пара-пам, фьють! Всё!
       [392, 440, 493, 523, 587].forEach((f, i) =>
-        this.playTone(f, 0.11, 'triangle', i * 0.11, 0.13)
+        this.playLuxuryVoice(f, 0.14, i * 0.105, 0.12, 2400)
       );
-      this.playTone(784, 0.25, 'sine', 0.65, 0.15, 1174);
+      this.playLuxuryVoice(784, 0.3, 0.62, 0.14, 3400);
     } else {
-      // Curb Your Enthusiasm бодрая туба
       const notes = [587, 523, 493, 466, 493, 392];
-      notes.forEach((f, i) => this.playTone(f, 0.18, 'triangle', i * 0.2, 0.14));
+      notes.forEach((f, i) => this.playTone(f, 0.2, 'sawtooth', i * 0.2, 0.12, undefined, 950));
     }
   }
 }

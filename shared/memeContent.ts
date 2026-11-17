@@ -59,11 +59,12 @@ export function pickRandomGuestNickname(): string {
 }
 
 export const DICE_SKINS: { id: DiceSkin; name: string; preview: string }[] = [
-  { id: 'classic', name: 'Кости Лудомана', preview: '🎲' },
-  { id: 'neon', name: 'Кибер-Блэкаут', preview: '💠' },
-  { id: 'gopnik', name: 'Тонированный Бусик', preview: '🖤' },
-  { id: 'gold', name: 'Золото Инфоцыгана', preview: '✨' },
-  { id: 'comic', name: 'Брейнрот Бдыщь', preview: '💥' },
+  { id: 'liquid_glass', name: 'Liquid Glass', preview: '🫧' },
+  { id: 'obsidian_frost', name: 'Дымчатый Обсидиан', preview: '🖤' },
+  { id: 'cyber_prism', name: 'Голограмма Prism', preview: '🌈' },
+  { id: 'emerald_aero', name: 'Неоновый Аэро', preview: '🧪' },
+  { id: 'crimson_pulse', name: 'Рубиновый Кварц', preview: '♦️' },
+  { id: 'arctic_pearl', name: 'Арктический Лёд', preview: '❄️' },
 ];
 
 export const MODE_INFO: Record<

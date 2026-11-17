@@ -4,7 +4,7 @@ import { txt } from '../../../shared/rules.ts';
 import { DiceSkin, PlayerState, SpeedDieFace } from '../../../shared/types.ts';
 import { AppleEmoji, renderAppleEmojis } from '../AppleEmoji.tsx';
 import { CellArtwork } from '../CellArtwork.tsx';
-import { InlineSpeedDieChip, MiniStyledDie } from '../DiceSkinPreview.tsx';
+import { getDiceSkinSurfaceStyle, InlineSpeedDieChip, MiniStyledDie } from '../DiceSkinPreview.tsx';
 
 const PIP_POSITIONS: Record<number, number[]> = {
   1: [4],
@@ -172,7 +172,7 @@ export const TradePropertyIconTile: React.FC<{
 function renderStylizedSegment(
   segment: string,
   keyPrefix: string,
-  diceSkin: DiceSkin = 'classic'
+  diceSkin: DiceSkin = 'liquid_glass'
 ): React.ReactNode {
   if (!segment) return null;
   const tokenRegex =
@@ -227,7 +227,7 @@ function renderStylizedSegment(
 export function renderColoredLogText(
   text: string,
   players: PlayerState[],
-  diceSkin: DiceSkin = 'classic'
+  diceSkin: DiceSkin = 'liquid_glass'
 ): React.ReactNode {
   const validPlayers = players
     .filter((p) => p.name && p.name.length > 0)
@@ -256,78 +256,67 @@ export function renderColoredLogText(
   });
 }
 
-export const M1DieBox: React.FC<{ value: number; skin: DiceSkin; animKey: number }> = ({
-  value,
-  skin,
-  animKey,
-}) => {
+export const M1DieBox: React.FC<{
+  value: number;
+  skin: DiceSkin;
+  animKey: number;
+  variant?: 'a' | 'b';
+}> = ({ value, skin, animKey, variant = 'a' }) => {
   const [displayValue, setDisplayValue] = useState(value);
-  const [isTumbling, setIsTumbling] = useState(false);
 
   useEffect(() => {
-    setIsTumbling(true);
     let ticks = 0;
+    setDisplayValue(((value + 2) % 6) + 1);
     const iv = setInterval(() => {
       ticks += 1;
-      setDisplayValue(((value + ticks * 2 + Math.floor(Math.random() * 5)) % 6) + 1);
-      if (ticks >= 5) {
+      if (ticks >= 4) {
         clearInterval(iv);
         setDisplayValue(value);
-        setIsTumbling(false);
+      } else {
+        setDisplayValue(((value + ticks * 2 + Math.floor(Math.random() * 4)) % 6) + 1);
       }
-    }, 58);
+    }, 52);
     return () => clearInterval(iv);
   }, [animKey, value]);
 
   const pips = PIP_POSITIONS[displayValue] || [4];
-
-  // Фирменные скины кубиков (включая геометрический неоново-фиолетовый скин из видео!)
-  const skinStyle: React.CSSProperties =
-    skin === 'neon'
-      ? {
-          background:
-            'conic-gradient(from 90deg at 50% 50%, #7c3aed 0deg 90deg, #f43f8a 90deg 180deg, #7c3aed 180deg 270deg, #2dd4bf 270deg 360deg)',
-          color: '#ffffff',
-          boxShadow: '0 14px 32px rgba(124,58,237,0.45)',
-        }
-      : skin === 'gold'
-      ? {
-          background: 'linear-gradient(135deg, #fde047 0%, #f59e0b 100%)',
-          color: '#171717',
-          boxShadow: '0 14px 32px rgba(245,158,11,0.4)',
-        }
-      : skin === 'gopnik'
-      ? {
-          background: '#18181b',
-          color: '#facc15',
-          border: '2px solid #52525b',
-          boxShadow: '0 14px 32px rgba(0,0,0,0.65)',
-        }
-      : skin === 'comic'
-      ? {
-          background: '#f43f5e',
-          color: '#fef08a',
-          border: '2.5px solid #171717',
-          boxShadow: '5px 5px 0px #171717',
-        }
-      : {
-          background: '#ffffff',
-          color: '#171717',
-          boxShadow: '0 14px 34px rgba(0,0,0,0.55)',
-        };
+  const skinStyle = getDiceSkinSurfaceStyle(skin);
 
   return (
     <div
       key={animKey}
-      style={skinStyle}
-      className={`w-[44px] h-[44px] sm:w-[64px] sm:h-[64px] md:w-[74px] md:h-[74px] rounded-[8px] sm:rounded-[10px] p-1.5 sm:p-2.5 grid grid-cols-3 grid-rows-3 gap-0.5 sm:gap-1 ${
-        isTumbling ? 'animate-dice-tumble' : 'animate-dice-roll'
+      style={{
+        ...skinStyle,
+        boxShadow: `${skinStyle.boxShadow || ''}, 0 18px 36px rgba(0,0,0,0.48)`,
+      }}
+      className={`relative overflow-hidden w-[48px] h-[48px] sm:w-[68px] sm:h-[68px] md:w-[78px] md:h-[78px] rounded-[12px] sm:rounded-[16px] p-2 sm:p-2.5 grid grid-cols-3 grid-rows-3 gap-0.5 sm:gap-1 ${
+        variant === 'b' ? 'animate-dice-throw-b' : 'animate-dice-throw-a'
       }`}
     >
+      {/* Верхний спекулярный блик Liquid Glass */}
+      <div
+        aria-hidden="true"
+        style={{
+          background:
+            'linear-gradient(140deg, rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.12) 36%, transparent 62%)',
+        }}
+        className="pointer-events-none absolute inset-0 rounded-[inherit]"
+      />
+      {/* Световой перелив по стеклу после приземления */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/45 to-transparent animate-glass-sheen"
+      />
       {Array.from({ length: 9 }).map((_, idx) => (
-        <div key={idx} className="flex items-center justify-center">
+        <div key={idx} className="relative z-10 flex items-center justify-center">
           {pips.includes(idx) && (
-            <span className="w-2 h-2 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 rounded-full bg-current shadow-xs" />
+            <span
+              style={{
+                boxShadow:
+                  '0 1.5px 4px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.65)',
+              }}
+              className="w-2 h-2 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 rounded-full bg-current transition-transform duration-150"
+            />
           )}
         </div>
       ))}
@@ -338,28 +327,51 @@ export const M1DieBox: React.FC<{ value: number; skin: DiceSkin; animKey: number
 export const SpeedDieBox: React.FC<{ face: SpeedDieFace; animKey: number }> = ({ face, animKey }) => (
   <div
     key={`sp_${animKey}_${String(face)}`}
-    className="w-[44px] h-[44px] sm:w-[64px] sm:h-[64px] md:w-[74px] md:h-[74px] rounded-[8px] sm:rounded-[10px] bg-gradient-to-br from-fuchsia-600 to-indigo-700 border-2 border-fuchsia-300 text-white font-black flex flex-col items-center justify-center shadow-[0_14px_32px_rgba(217,70,239,0.5)] animate-dice-roll"
+    style={{
+      background:
+        'linear-gradient(145deg, rgba(192, 38, 211, 0.42) 0%, rgba(79, 70, 229, 0.34) 100%)',
+      backdropFilter: 'blur(16px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+      border: '1px solid rgba(240, 171, 252, 0.55)',
+      boxShadow:
+        '0 18px 36px rgba(192, 38, 211, 0.38), inset 0 1.5px 1px rgba(255, 255, 255, 0.65), inset 0 -3px 8px rgba(49, 46, 129, 0.35)',
+    }}
+    className="relative overflow-hidden w-[48px] h-[48px] sm:w-[68px] sm:h-[68px] md:w-[78px] md:h-[78px] rounded-[12px] sm:rounded-[16px] text-white font-black flex flex-col items-center justify-center animate-dice-throw-b"
   >
-    {face === 'BUS' ? (
-      <>
-        <span className="text-base sm:text-xl leading-none">
-          <AppleEmoji emoji="🚐" />
-        </span>
-        <span className="text-[8px] sm:text-[10px] mt-0.5">БУС</span>
-      </>
-    ) : face === 'M1' ? (
-      <>
-        <span className="text-base sm:text-xl leading-none">
-          <AppleEmoji emoji="😈" />
-        </span>
-        <span className="text-[7.5px] sm:text-[9.5px] mt-0.5">ХАОС</span>
-      </>
-    ) : (
-      <>
-        <span className="text-lg sm:text-2xl leading-none">+{face}</span>
-        <span className="text-[8px] sm:text-[9px] uppercase opacity-80">Speed</span>
-      </>
-    )}
+    <div
+      aria-hidden="true"
+      style={{
+        background:
+          'linear-gradient(140deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.1) 36%, transparent 62%)',
+      }}
+      className="pointer-events-none absolute inset-0 rounded-[inherit]"
+    />
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-glass-sheen"
+    />
+    <div className="relative z-10 flex flex-col items-center justify-center">
+      {face === 'BUS' ? (
+        <>
+          <span className="text-base sm:text-xl leading-none">
+            <AppleEmoji emoji="🚐" />
+          </span>
+          <span className="text-[8px] sm:text-[10px] mt-0.5 tracking-wide">БУС</span>
+        </>
+      ) : face === 'M1' ? (
+        <>
+          <span className="text-base sm:text-xl leading-none">
+            <AppleEmoji emoji="😈" />
+          </span>
+          <span className="text-[7.5px] sm:text-[9.5px] mt-0.5 tracking-wide">ХАОС</span>
+        </>
+      ) : (
+        <>
+          <span className="text-lg sm:text-2xl leading-none font-mono-num">+{face}</span>
+          <span className="text-[8px] sm:text-[9px] uppercase opacity-85 tracking-wider">Speed</span>
+        </>
+      )}
+    </div>
   </div>
 );
 

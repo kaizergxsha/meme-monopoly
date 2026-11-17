@@ -195,7 +195,7 @@ function testEngineMechanics() {
 
   // 1. Тест режима «Расклад» (3 корзины = все 28 полей розданы)
   const rRasklad = gm.createRoom(
-    { playerId: 'p1', socketId: 's1', name: 'P1', avatar: '🐸', color: '#f43f5e', diceSkin: 'classic' },
+    { playerId: 'p1', socketId: 's1', name: 'P1', avatar: '🐸', color: '#f43f5e', diceSkin: 'liquid_glass' },
     'rasklad'
   );
   gm.addBot(rRasklad, 'p1');
@@ -232,9 +232,9 @@ function testEngineMechanics() {
     { playerId: 't0', socketId: 'st0', name: 'T0', avatar: '🐸', color: '#10b981', diceSkin: 'gold' },
     'team2v2'
   );
-  gm.joinRoom(r2v2.state.code, { playerId: 't1', socketId: 'st1', name: 'T1', avatar: '🤡', color: '#eab308', diceSkin: 'classic' });
-  gm.joinRoom(r2v2.state.code, { playerId: 't2', socketId: 'st2', name: 'T2', avatar: '🍺', color: '#06b6d4', diceSkin: 'classic' });
-  gm.joinRoom(r2v2.state.code, { playerId: 't3', socketId: 'st3', name: 'T3', avatar: '💀', color: '#a855f7', diceSkin: 'classic' });
+  gm.joinRoom(r2v2.state.code, { playerId: 't1', socketId: 'st1', name: 'T1', avatar: '🤡', color: '#eab308', diceSkin: 'liquid_glass' });
+  gm.joinRoom(r2v2.state.code, { playerId: 't2', socketId: 'st2', name: 'T2', avatar: '🍺', color: '#06b6d4', diceSkin: 'liquid_glass' });
+  gm.joinRoom(r2v2.state.code, { playerId: 't3', socketId: 'st3', name: 'T3', avatar: '💀', color: '#a855f7', diceSkin: 'liquid_glass' });
   gm.startGame(r2v2, 't0');
   if (r2v2.state.players[0].team !== r2v2.state.players[2].team) {
     throw new Error('2x2 alternating teams mismatch');
@@ -258,7 +258,7 @@ function testEngineMechanics() {
 
   // 4. Тест IT-утилит («Прод на костылях» #12 и «Легаси код» #28): 1 поле = кубики×100, 2 поля = кубики×250
   const rRules = gm.createRoom(
-    { playerId: 'u1', socketId: 'su1', name: 'U1', avatar: '🐸', color: '#10b981', diceSkin: 'classic' },
+    { playerId: 'u1', socketId: 'su1', name: 'U1', avatar: '🐸', color: '#10b981', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.addBot(rRules, 'u1');
@@ -331,7 +331,7 @@ function testEngineMechanics() {
 
   // 6. Тест автоперехода хода без POST_ROLL после броска (дубль оставляет ход, не-дубль передаёт)
   const rTurn = gm.createRoom(
-    { playerId: 'a1', socketId: 'sa1', name: 'A1', avatar: '🐸', color: '#10b981', diceSkin: 'classic' },
+    { playerId: 'a1', socketId: 'sa1', name: 'A1', avatar: '🐸', color: '#10b981', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.addBot(rTurn, 'a1');
@@ -383,7 +383,7 @@ function testEngineMechanics() {
   let verifiedManualRent = false;
   for (let attempt = 0; attempt < 10 && !verifiedManualRent; attempt++) {
     const rRent = gm.createRoom(
-      { playerId: 'r1', socketId: 'sr1', name: 'R1', avatar: '🐸', color: '#10b981', diceSkin: 'classic' },
+      { playerId: 'r1', socketId: 'sr1', name: 'R1', avatar: '🐸', color: '#10b981', diceSkin: 'liquid_glass' },
       'classic'
     );
     gm.addBot(rRent, 'r1');
@@ -419,7 +419,7 @@ function testEngineMechanics() {
   const sp1 = `bot_stat_p1_${Date.now()}`;
   const sp2 = `bot_stat_p2_${Date.now()}`;
   const rStats = gm.createRoom(
-    { playerId: sp1, socketId: 'ss1', name: 'Stat1', avatar: '🐸', color: '#10b981', diceSkin: 'classic' },
+    { playerId: sp1, socketId: 'ss1', name: 'Stat1', avatar: '🐸', color: '#10b981', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.joinRoom(rStats.state.code, {
@@ -488,7 +488,7 @@ function testEngineMechanics() {
   // 9. Тест выплаты на Старте: проход мимо = +2000, точная остановка на Старте = +3000 (2000 + 1000 бонус)
   //    + ручная оплата налога «Воздух $1000» (PENDING_DEBT)
   const rStart = gm.createRoom(
-    { playerId: 'st1', socketId: 'sst1', name: 'Start1', avatar: '🐸', color: '#dc2626', diceSkin: 'classic' },
+    { playerId: 'st1', socketId: 'sst1', name: 'Start1', avatar: '🐸', color: '#dc2626', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.addBot(rStart, 'st1');
@@ -528,7 +528,7 @@ function testEngineMechanics() {
 
   // 10. Тест Портала (выбор любой клетки, напр. #39), поочерёдного Аукциона от цены +100 ($4100 для #39 за $4000), и лога сделки
   const rNew = gm.createRoom(
-    { playerId: 'n1', socketId: 'sn1', name: 'N1', avatar: '🐸', color: '#dc2626', diceSkin: 'classic' },
+    { playerId: 'n1', socketId: 'sn1', name: 'N1', avatar: '🐸', color: '#dc2626', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.joinRoom(rNew.state.code, {
@@ -537,7 +537,7 @@ function testEngineMechanics() {
     name: 'N2',
     avatar: '🦈',
     color: '#9333ea',
-    diceSkin: 'classic',
+    diceSkin: 'liquid_glass',
   });
   gm.joinRoom(rNew.state.code, {
     playerId: 'n3',
@@ -545,7 +545,7 @@ function testEngineMechanics() {
     name: 'N3',
     avatar: '🍺',
     color: '#16a34a',
-    diceSkin: 'classic',
+    diceSkin: 'liquid_glass',
   });
   gm.startGame(rNew, 'n1');
   rNew.state.currentPlayerIndex = 0;
@@ -666,7 +666,7 @@ function testEngineMechanics() {
 
   // 11b. Тест голосования за кик (цель не голосует) и takenAtRound кредита
   const rKick = gm.createRoom(
-    { playerId: 'k1', socketId: 'sk1', name: 'KickHost', avatar: '🦈', color: '#10b981', diceSkin: 'classic' },
+    { playerId: 'k1', socketId: 'sk1', name: 'KickHost', avatar: '🦈', color: '#10b981', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.addBot(rKick, 'k1');
@@ -701,7 +701,7 @@ function testEngineMechanics() {
 
   // 11c. Тест переподключения к активной игре (по playerId, по нику и к отключённому слоту)
   const rReconn = gm.createRoom(
-    { playerId: 'rc_host', socketId: 'src1', name: 'МаксимТест', avatar: '😎', color: '#dc2626', diceSkin: 'classic' },
+    { playerId: 'rc_host', socketId: 'src1', name: 'МаксимТест', avatar: '😎', color: '#dc2626', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.addBot(rReconn, 'rc_host');
@@ -717,7 +717,7 @@ function testEngineMechanics() {
     name: 'МаксимТест',
     avatar: '🐸',
     color: '#10b981',
-    diceSkin: 'classic',
+    diceSkin: 'liquid_glass',
   });
   if (!reconnByName.ok || reconnByName.playerId !== 'rc_host' || !rReconn.state.players[0].isConnected) {
     throw new Error(`Expected reconnect by nickname to restore rc_host, got: ${JSON.stringify({ ok: reconnByName.ok, playerId: reconnByName.playerId })}`);
@@ -729,7 +729,7 @@ function testEngineMechanics() {
     name: 'ДругоеИмя',
     avatar: '👽',
     color: '#2563eb',
-    diceSkin: 'classic',
+    diceSkin: 'liquid_glass',
   });
   if (reconnByStranger.ok) {
     throw new Error(`Expected unrelated stranger NOT to hijack disconnected human slot, got: ${JSON.stringify(reconnByStranger)}`);
@@ -740,7 +740,7 @@ function testEngineMechanics() {
     name: 'МаксимТест',
     avatar: '😎',
     color: '#dc2626',
-    diceSkin: 'classic',
+    diceSkin: 'liquid_glass',
   });
   if (!reconnById.ok || reconnById.playerId !== 'rc_host' || !rReconn.state.players[0].isConnected) {
     throw new Error(`Expected reconnect by playerId to restore rc_host, got: ${JSON.stringify({ ok: reconnById.ok, playerId: reconnById.playerId })}`);
@@ -748,7 +748,7 @@ function testEngineMechanics() {
 
   // 12. Тест двухэтапного Шанса (фаза 'CHANCE' -> показ плашки с effectLabel -> acknowledgeChance -> применение эффекта)
   const rChance = gm.createRoom(
-    { playerId: 'ch1', socketId: 'sch1', name: 'Chance1', avatar: '🐸', color: '#dc2626', diceSkin: 'classic' },
+    { playerId: 'ch1', socketId: 'sch1', name: 'Chance1', avatar: '🐸', color: '#dc2626', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.addBot(rChance, 'ch1');
@@ -778,7 +778,7 @@ function testEngineMechanics() {
 
   // 13. Тест разрешения >1 филиала за ход в speed режиме
   const rSpeed = gm.createRoom(
-    { playerId: 'sp1', socketId: 'ssp1', name: 'SP1', avatar: '🐸', color: '#10b981', diceSkin: 'classic' },
+    { playerId: 'sp1', socketId: 'ssp1', name: 'SP1', avatar: '🐸', color: '#10b981', diceSkin: 'liquid_glass' },
     'speed'
   );
   gm.addBot(rSpeed, 'sp1');
@@ -796,7 +796,7 @@ function testEngineMechanics() {
 
   // 14. Тест 3-й неудачной попытки в тюрьме при cash < 500 и последующего резолва клетки
   const rJail = gm.createRoom(
-    { playerId: 'j1', socketId: 'sj1', name: 'J1', avatar: '🐸', color: '#10b981', diceSkin: 'classic' },
+    { playerId: 'j1', socketId: 'sj1', name: 'J1', avatar: '🐸', color: '#10b981', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.addBot(rJail, 'j1');
@@ -834,7 +834,7 @@ function testEngineMechanics() {
 
   // 15. Тест продления таймера хода при сделке и лимита 3 сделки за ход
   const rTradeLim = gm.createRoom(
-    { playerId: 'tl1', socketId: 'stl1', name: 'TL1', avatar: '🐸', color: '#10b981', diceSkin: 'classic' },
+    { playerId: 'tl1', socketId: 'stl1', name: 'TL1', avatar: '🐸', color: '#10b981', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.joinRoom(rTradeLim.state.code, {
@@ -923,7 +923,7 @@ function testEngineMechanics() {
     onBankruptcyAnim: () => {},
   });
   const rTaunt = gmTaunt.createRoom(
-    { playerId: 'tp1', socketId: 'ts1', name: 'TP1', avatar: '🐸', color: '#dc2626', diceSkin: 'classic' },
+    { playerId: 'tp1', socketId: 'ts1', name: 'TP1', avatar: '🐸', color: '#dc2626', diceSkin: 'liquid_glass' },
     'classic'
   );
   gmTaunt.joinRoom(rTaunt.state.code, {
@@ -932,7 +932,7 @@ function testEngineMechanics() {
     name: 'TP2',
     avatar: '🤡',
     color: '#2563eb',
-    diceSkin: 'classic',
+    diceSkin: 'liquid_glass',
   });
   gmTaunt.startGame(rTaunt, 'tp1');
   gmTaunt.sendTaunt(rTaunt, 'tp1', 'balls');
@@ -953,7 +953,7 @@ function testEngineMechanics() {
 
   // 15. Тест обратного хода через Старт (деньги НЕ начисляются) и стакинга дубль + Шанс EXTRA_TURN (= 2 доп. хода)
   const rNewRules = gm.createRoom(
-    { playerId: 'rp1', socketId: 'rs1', name: 'RP1', avatar: '🐸', color: '#dc2626', diceSkin: 'classic' },
+    { playerId: 'rp1', socketId: 'rs1', name: 'RP1', avatar: '🐸', color: '#dc2626', diceSkin: 'liquid_glass' },
     'classic'
   );
   gm.joinRoom(rNewRules.state.code, {
@@ -962,7 +962,7 @@ function testEngineMechanics() {
     name: 'RP2',
     avatar: '🤡',
     color: '#2563eb',
-    diceSkin: 'classic',
+    diceSkin: 'liquid_glass',
   });
   gm.startGame(rNewRules, 'rp1');
 
@@ -1246,8 +1246,8 @@ async function main() {
     }
     console.log('[QA] Lobby check:', JSON.stringify(lobbyCheck));
     if (!lobbyCheck.hasCreateBtn) throw new Error('Create Room button missing in Lobby');
-    if (lobbyCheck.colorButtonsCount !== 5) {
-      throw new Error(`Expected 5 color picker buttons on Home, got ${lobbyCheck.colorButtonsCount}`);
+    if (lobbyCheck.colorButtonsCount !== 0) {
+      throw new Error(`Expected no color picker buttons on Home, got ${lobbyCheck.colorButtonsCount}`);
     }
     if (lobbyCheck.scrollW > lobbyCheck.innerW) {
       throw new Error(`Horizontal scroll in Lobby: ${lobbyCheck.scrollW} > ${lobbyCheck.innerW}`);
@@ -1267,7 +1267,7 @@ async function main() {
       colorButtonsCount: document.querySelectorAll('[data-testid="home-color-picker"] button').length,
     }))()`);
     console.log('[QA] Mobile 390x844 Lobby check:', JSON.stringify(mobileLobbyCheck));
-    if (mobileLobbyCheck.scrollW > mobileLobbyCheck.innerW || mobileLobbyCheck.colorButtonsCount !== 5) {
+    if (mobileLobbyCheck.scrollW > mobileLobbyCheck.innerW || mobileLobbyCheck.colorButtonsCount !== 0) {
       throw new Error(`Mobile lobby check failed: ${JSON.stringify(mobileLobbyCheck)}`);
     }
     await cdp.send('Emulation.setDeviceMetricsOverride', {
@@ -1639,7 +1639,12 @@ async function main() {
     })()`);
     await sleep(200);
 
-    // Проверка кнопок озвучки (всех 8) на Desktop (1440x900)
+    // Проверка кнопок озвучки (всех 8) на Desktop (1440x900): сначала раскрываем выпадающий Soundpad Deck
+    await cdp.eval(`(() => {
+      const toggle = document.querySelector('[data-testid="soundpad-toggle-btn"]');
+      if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+    })()`);
+    await sleep(350);
     const desktopVoiceBtns = await cdp.eval(`(() => {
       const ids = ${JSON.stringify(TAUNTS.map((t) => `taunt-voice-${t.id}`))};
       const out = {};

@@ -6,7 +6,13 @@ export type GameMode =
   | 'duel_restart'
   | 'retro';
 
-export type DiceSkin = 'classic' | 'neon' | 'gopnik' | 'gold' | 'comic';
+export type DiceSkin =
+  | 'liquid_glass'
+  | 'obsidian_frost'
+  | 'cyber_prism'
+  | 'emerald_aero'
+  | 'crimson_pulse'
+  | 'arctic_pearl';
 
 export type SpeedDieFace = 1 | 2 | 3 | 'BUS' | 'M1';
 

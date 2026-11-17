@@ -173,7 +173,14 @@ app.put('/api/profile', (req, res) => {
     typeof body.color === 'string' && TOKEN_COLORS.some((c) => c.hex === body.color)
       ? body.color
       : existing.color;
-  const validDiceSkins: DiceSkin[] = ['classic', 'neon', 'gopnik', 'gold', 'comic'];
+  const validDiceSkins: DiceSkin[] = [
+    'liquid_glass',
+    'obsidian_frost',
+    'cyber_prism',
+    'emerald_aero',
+    'crimson_pulse',
+    'arctic_pearl',
+  ];
   const nextDiceSkin =
     typeof body.diceSkin === 'string' && validDiceSkins.includes(body.diceSkin as DiceSkin)
       ? (body.diceSkin as DiceSkin)

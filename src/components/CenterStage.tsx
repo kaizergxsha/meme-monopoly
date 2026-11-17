@@ -1704,16 +1704,21 @@ export const CenterStage: React.FC<CenterStageProps> = ({
 
       {/* 2. КРУПНЫЕ ЦЕНТРАЛЬНЫЕ КУБИКИ ВО ВРЕМЯ БРОСКА */}
       {showCenterDice && roomState.lastDice && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-4 z-25">
+        <div
+          style={{ perspective: '760px' }}
+          className="pointer-events-none absolute inset-0 flex items-center justify-center gap-3.5 sm:gap-5 z-25"
+        >
           <M1DieBox
             value={roomState.lastDice.die1}
-            skin={diceRoller?.diceSkin ?? 'classic'}
+            skin={diceRoller?.diceSkin ?? 'liquid_glass'}
             animKey={roomState.lastDice.timestamp}
+            variant="a"
           />
           <M1DieBox
             value={roomState.lastDice.die2}
-            skin={diceRoller?.diceSkin ?? 'classic'}
+            skin={diceRoller?.diceSkin ?? 'liquid_glass'}
             animKey={roomState.lastDice.timestamp + 1}
+            variant="b"
           />
           {roomState.lastDice.speedDie !== null &&
             roomState.lastDice.speedDie !== undefined && (
@@ -1828,7 +1833,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                       {renderColoredLogText(
                         rawText,
                         roomState.players,
-                        matchedPlayer?.diceSkin ?? 'classic'
+                        matchedPlayer?.diceSkin ?? 'liquid_glass'
                       )}
                     </span>
                   </div>

@@ -279,10 +279,7 @@ export class GameManager {
     return pool[Math.floor(Math.random() * pool.length)].hex;
   }
 
-  private resolvePlayerColor(preferredColor: string, existingPlayers: PlayerState[]): string {
-    const isValid = TOKEN_COLORS.some((c) => c.hex === preferredColor);
-    const isTaken = existingPlayers.some((p) => p.color === preferredColor);
-    if (isValid && !isTaken) return preferredColor;
+  private resolvePlayerColor(_preferredColor: string, existingPlayers: PlayerState[]): string {
     return this.pickRandomUnusedColor(existingPlayers);
   }
 
@@ -305,7 +302,7 @@ export class GameManager {
       name: profile.name.trim().slice(0, 24) || 'Анонимус',
       avatar: profile.avatar || '🐸',
       color: profile.color || this.pickRandomUnusedColor([]),
-      diceSkin: profile.diceSkin || 'classic',
+      diceSkin: profile.diceSkin || 'liquid_glass',
       isBot,
       isConnected: true,
       team: settings.mode === 'team2v2' ? ((seatIndex % 2) as 0 | 1) : undefined,
@@ -530,7 +527,7 @@ export class GameManager {
         name: botMeta.name,
         avatar: botMeta.avatar,
         color,
-        diceSkin: 'neon',
+        diceSkin: 'cyber_prism',
       },
       true,
       room.state.players.length,

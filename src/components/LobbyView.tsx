@@ -698,7 +698,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       >
         <div className="flex items-center gap-2.5 sm:gap-3.5">
           <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#1B1811] via-[#12151E] to-[#0A0C11] flex items-center justify-center shadow-[0_10px_28px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(229,184,105,0.35)] border border-[#E5B869]/55 shrink-0">
-            <DiceSkinPairPreview skin="gold" size={16} />
+            <DiceSkinPairPreview skin="liquid_glass" size={16} />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -865,42 +865,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <AppleEmoji emoji={av.emoji} className="w-6 h-6" />
                 </button>
               ))}
-            </div>
-            <div className="mt-3.5">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-400 mb-1.5">
-                Цвет фишки (5 контрастных цветов)
-              </label>
-              <div className="grid grid-cols-5 gap-1.5" data-testid="home-color-picker">
-                {TOKEN_COLORS.map((c) => {
-                  const selected = profile.color === c.hex;
-                  return (
-                    <button
-                      key={c.hex}
-                      type="button"
-                      onClick={() => onUpdateProfile({ color: c.hex })}
-                      title={c.name}
-                      style={{ backgroundColor: c.hex }}
-                      className={`h-9 rounded-xl border transition cursor-pointer flex items-center justify-center shadow-md ${
-                        selected
-                          ? 'ring-2 ring-[#E5B869] border-white scale-105'
-                          : 'border-white/25 opacity-80 hover:opacity-100'
-                      }`}
-                    >
-                      {selected ? (
-                        <span className="text-xs font-black text-white drop-shadow">✓</span>
-                      ) : (
-                        <span className="w-2.5 h-2.5 rounded-full bg-white/80" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-1 text-[10px] text-neutral-400">
-                Выбран:{' '}
-                <span className="text-[#F8FAFC] font-bold">
-                  {TOKEN_COLORS.find((c) => c.hex === profile.color)?.name ?? 'Красный'}
-                </span>
-              </div>
             </div>
           </div>
 

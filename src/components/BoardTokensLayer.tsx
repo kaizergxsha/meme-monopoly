@@ -113,6 +113,57 @@ interface StepTrailItem {
   color: string;
 }
 
+interface FlightArcState {
+  id: string;
+  x0: number;
+  y0: number;
+  cx: number;
+  cy: number;
+  x1: number;
+  y1: number;
+  x: number;
+  y: number;
+  lift: number;
+  progress: number;
+  color: string;
+  isArrest: boolean;
+  fading?: boolean;
+}
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function computeFlightControlPoint(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number
+): { cx: number; cy: number } {
+  const midX = (x0 + x1) / 2;
+  const midY = (y0 + y1) / 2;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dist = Math.hypot(dx, dy) || 1;
+  // Тянем дугу к центру поля (50, 50) + добавляем перпендикулярный изгиб для диагональных полётов
+  const pullX = (50 - midX) * 0.48;
+  const pullY = (50 - midY) * 0.48;
+  const perpScale = Math.min(22, Math.max(10, dist * 0.24));
+  const nx = -dy / dist;
+  const ny = dx / dist;
+  const pullLen = Math.hypot(pullX, pullY);
+  if (pullLen < 6) {
+    return {
+      cx: Math.min(90, Math.max(10, midX + nx * perpScale)),
+      cy: Math.min(90, Math.max(10, midY + ny * perpScale)),
+    };
+  }
+  return {
+    cx: Math.min(90, Math.max(10, midX + pullX + nx * (perpScale * 0.35))),
+    cy: Math.min(90, Math.max(10, midY + pullY + ny * (perpScale * 0.35))),
+  };
+}
+
 type TokenMoveMode = 'STEP' | 'WARP' | 'ARREST_CUFF' | 'ARREST_HAUL' | null;
 
 export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
@@ -131,9 +182,12 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
   const [movingMode, setMovingMode] = useState<Record<string, TokenMoveMode>>({});
   const [landings, setLandings] = useState<LandingEffect[]>([]);
   const [stepTrails, setStepTrails] = useState<StepTrailItem[]>([]);
+  const [activeFlights, setActiveFlights] = useState<Record<string, FlightArcState>>({});
+  const [fadingArcs, setFadingArcs] = useState<FlightArcState[]>([]);
   const [jailSlam, setJailSlam] = useState<{ id: string; playerName: string } | null>(null);
 
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const rafIdsRef = useRef<Record<string, number>>({});
   const auxTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const targetRef = useRef<Record<string, number>>({});
   const handledArrestIdRef = useRef<string | null>(lastPoliceArrest?.id ?? null);
@@ -155,9 +209,11 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
 
   useEffect(() => {
     const stepTimers = timersRef.current;
+    const rafIds = rafIdsRef.current;
     const auxTimers = auxTimersRef.current;
     return () => {
       Object.values(stepTimers).forEach(clearTimeout);
+      Object.values(rafIds).forEach((id) => cancelAnimationFrame(id));
       auxTimers.forEach(clearTimeout);
       auxTimers.clear();
     };
@@ -217,6 +273,10 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
         clearTimeout(timersRef.current[p.id]);
         delete timersRef.current[p.id];
       }
+      if (rafIdsRef.current[p.id]) {
+        cancelAnimationFrame(rafIdsRef.current[p.id]);
+        delete rafIdsRef.current[p.id];
+      }
       targetRef.current[p.id] = p.position;
 
       const cwDist = (p.position - curVis + 40) % 40;
@@ -251,13 +311,79 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
         auxTimersRef.current.add(rmLand);
       };
 
-      const triggerArrestHaulSequence = (cuffHoldMs: number) => {
+      const launchCurvedFlight = (
+        fromCellId: number,
+        fromInJailFlag: boolean,
+        toCellId: number,
+        toInJailFlag: boolean,
+        durationMs: number,
+        flightColor: string,
+        isArrestFlight: boolean,
+        onComplete: () => void
+      ) => {
+        const startC = getTokenBoardCoords(fromCellId, fromInJailFlag, 0, 1);
+        const endC = getTokenBoardCoords(toCellId, toInJailFlag, 0, 1);
+        const { cx, cy } = computeFlightControlPoint(startC.x, startC.y, endC.x, endC.y);
+        const flightId = `${p.id}_${Date.now()}_${Math.random()}`;
+        const startTs = performance.now();
+
+        // Вспышка отрыва на стартовой клетке
+        triggerArrivalLanding(fromCellId, fromInJailFlag, flightColor);
+        setVisualPos((v) => ({ ...v, [p.id]: toCellId }));
+
+        const tickFlight = (nowTs: number) => {
+          const rawT = Math.min(1, (nowTs - startTs) / durationMs);
+          const eased = easeInOutCubic(rawT);
+          const inv = 1 - eased;
+          const x = inv * inv * startC.x + 2 * inv * eased * cx + eased * eased * endC.x;
+          const y = inv * inv * startC.y + 2 * inv * eased * cy + eased * eased * endC.y;
+          const lift = Math.sin(Math.PI * eased);
+
+          const frameState: FlightArcState = {
+            id: flightId,
+            x0: startC.x,
+            y0: startC.y,
+            cx,
+            cy,
+            x1: endC.x,
+            y1: endC.y,
+            x,
+            y,
+            lift,
+            progress: eased,
+            color: flightColor,
+            isArrest: isArrestFlight,
+          };
+
+          if (rawT < 1) {
+            setActiveFlights((prev) => ({ ...prev, [p.id]: frameState }));
+            rafIdsRef.current[p.id] = requestAnimationFrame(tickFlight);
+          } else {
+            delete rafIdsRef.current[p.id];
+            setActiveFlights((prev) => {
+              const next = { ...prev };
+              delete next[p.id];
+              return next;
+            });
+            setFadingArcs((prev) => [...prev.slice(-4), { ...frameState, progress: 1, fading: true }]);
+            const rmArc = setTimeout(() => {
+              auxTimersRef.current.delete(rmArc);
+              setFadingArcs((prev) => prev.filter((a) => a.id !== flightId));
+            }, 460);
+            auxTimersRef.current.add(rmArc);
+            onComplete();
+          }
+        };
+
+        rafIdsRef.current[p.id] = requestAnimationFrame(tickFlight);
+      };
+
+      const triggerArrestHaulSequence = (cuffHoldMs: number, fromCellId: number) => {
         setMovingMode((m) => ({ ...m, [p.id]: 'ARREST_CUFF' }));
         timersRef.current[p.id] = setTimeout(() => {
+          delete timersRef.current[p.id];
           setMovingMode((m) => ({ ...m, [p.id]: 'ARREST_HAUL' }));
-          setVisualPos((v) => ({ ...v, [p.id]: 10 }));
-          timersRef.current[p.id] = setTimeout(() => {
-            delete timersRef.current[p.id];
+          launchCurvedFlight(fromCellId, false, 10, true, 920, '#F43F5E', true, () => {
             setMovingMode((m) => ({ ...m, [p.id]: null }));
             triggerArrivalLanding(10, true, '#F43F5E');
             const slamId = `slam_${p.id}_${Date.now()}`;
@@ -267,7 +393,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               setJailSlam((cur) => (cur?.id === slamId ? null : cur));
             }, 1500);
             auxTimersRef.current.add(rmSlam);
-          }, 860);
+          });
         }, cuffHoldMs);
       };
 
@@ -299,17 +425,17 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
 
             if (nextCell === 30) {
               triggerArrivalLanding(30, false, '#F43F5E');
-              triggerArrestHaulSequence(700);
+              triggerArrestHaulSequence(620, 30);
             } else {
-              timersRef.current[p.id] = setTimeout(() => walkToPolice(nextCell), 90);
+              timersRef.current[p.id] = setTimeout(() => walkToPolice(nextCell), 95);
             }
           };
           timersRef.current[p.id] = setTimeout(() => walkToPolice(curVis), 80);
           continue;
         }
 
-        // Для 3 дублей или Шанса: мигалки на текущей клетке игрока, затем автозак в СИЗО #10
-        triggerArrestHaulSequence(620);
+        // Для 3 дублей или Шанса: мигалки на текущей клетке игрока, затем плавный перелёт по дуге в Учебку #10
+        triggerArrestHaulSequence(560, curVis);
         continue;
       }
 
@@ -326,12 +452,10 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
 
       if (isDirectWarp) {
         setMovingMode((m) => ({ ...m, [p.id]: 'WARP' }));
-        setVisualPos((v) => ({ ...v, [p.id]: p.position }));
-        timersRef.current[p.id] = setTimeout(() => {
-          delete timersRef.current[p.id];
+        launchCurvedFlight(curVis, prevJail, p.position, p.inJail, 680, p.color, false, () => {
           setMovingMode((m) => ({ ...m, [p.id]: null }));
           triggerArrivalLanding(p.position, p.inJail, p.color);
-        }, 380);
+        });
       } else {
         // Плавное пошаговое движение по клеткам периметра (вперёд или задом наперёд ⏪)
         setMovingMode((m) => ({ ...m, [p.id]: 'STEP' }));
@@ -357,9 +481,9 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               setMovingMode((m) => ({ ...m, [p.id]: null }));
               const latestP = playersRef.current.find((x) => x.id === p.id) ?? p;
               triggerArrivalLanding(nextCell, latestP.inJail, latestP.color);
-            }, 100);
+            }, 110);
           } else {
-            timersRef.current[p.id] = setTimeout(() => advanceOne(nextCell), 85);
+            timersRef.current[p.id] = setTimeout(() => advanceOne(nextCell), 95);
           }
         };
         // Небольшая задержка перед стартом шагов, чтобы игрок увидел бросок кубиков
@@ -401,6 +525,57 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
           />
         );
       })}
+
+      {/* Видимая светящаяся дуга-траектория полёта при телепорте / отправке в Учебку */}
+      {(Object.values(activeFlights).length > 0 || fadingArcs.length > 0) && (
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="pointer-events-none absolute inset-0 w-full h-full z-28 overflow-visible"
+        >
+          {[...fadingArcs, ...Object.values(activeFlights)].map((arc) => {
+            const pathD = `M ${arc.x0} ${arc.y0} Q ${arc.cx} ${arc.cy} ${arc.x1} ${arc.y1}`;
+            const dashOffset = Math.max(0, 100 - arc.progress * 100);
+            return (
+              <g key={arc.id} className={arc.fading ? 'animate-arc-fade' : ''}>
+                {/* Мягкая направляющая траектория */}
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={arc.color}
+                  strokeWidth="0.65"
+                  strokeDasharray="1.6 1.8"
+                  strokeOpacity={arc.fading ? 0.2 : 0.35}
+                />
+                {/* Внешнее неоновое свечение луча */}
+                <path
+                  d={pathD}
+                  pathLength={100}
+                  fill="none"
+                  stroke={arc.color}
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeDasharray="100"
+                  strokeDashoffset={dashOffset}
+                  strokeOpacity={0.35}
+                />
+                {/* Яркое ядро траектории */}
+                <path
+                  d={pathD}
+                  pathLength={100}
+                  fill="none"
+                  stroke={arc.isArrest ? '#FDA4AF' : '#FFFFFF'}
+                  strokeWidth="0.75"
+                  strokeLinecap="round"
+                  strokeDasharray="100"
+                  strokeDashoffset={dashOffset}
+                  strokeOpacity={0.92}
+                />
+              </g>
+            );
+          })}
+        </svg>
+      )}
 
       {/* Волны приземления фишки на целевую клетку */}
       {landings.map((l) => {
@@ -447,6 +622,11 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
         const isCrowdedCell = sameCell.length >= 2;
         const coords = getTokenBoardCoords(vp, p.inJail && vp === 10, slotIdx, sameCell.length);
 
+        const flight = activeFlights[p.id];
+        const renderX = flight ? flight.x : coords.x;
+        const renderY = flight ? flight.y : coords.y;
+        const flightScale = flight ? 1 + 0.42 * flight.lift : 1;
+
         const isActive = isPlaying && p.id === currentPlayerId;
         const mode = movingMode[p.id];
         const tick = stepTick[p.id] ?? 0;
@@ -457,17 +637,15 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
             key={p.id}
             data-player-token={p.id}
             style={{
-              left: `${coords.x}%`,
-              top: `${coords.y}%`,
-              transition:
-                mode === 'ARREST_HAUL'
-                  ? 'left 840ms cubic-bezier(0.34, 1.24, 0.64, 1), top 840ms cubic-bezier(0.34, 1.24, 0.64, 1)'
-                  : mode === 'WARP'
-                  ? 'left 380ms cubic-bezier(0.22, 1, 0.36, 1), top 380ms cubic-bezier(0.22, 1, 0.36, 1)'
-                  : 'left 125ms cubic-bezier(0.22, 1, 0.36, 1), top 125ms cubic-bezier(0.22, 1, 0.36, 1)',
-              zIndex: isArrestMode ? 55 : mode ? 45 : isActive ? 38 : 32 + slotIdx,
+              left: `${renderX}%`,
+              top: `${renderY}%`,
+              transform: `translate(-50%, -50%) scale(${flightScale.toFixed(3)})`,
+              transition: flight
+                ? 'none'
+                : 'left 105ms cubic-bezier(0.25, 0.46, 0.45, 0.94), top 105ms cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 180ms ease-out',
+              zIndex: flight || isArrestMode ? 55 : mode ? 45 : isActive ? 38 : 32 + slotIdx,
             }}
-            className="absolute -translate-x-1/2 -translate-y-1/2"
+            className="absolute"
           >
             {/* Полицейские красно-синие мигалки вокруг фишки при аресте */}
             {isArrestMode && (
@@ -532,7 +710,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
 
             {/* Плашка при бусификации или шагании фишки */}
             {isArrestMode ? (
-              <span className="absolute -top-6 sm:-top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[8.5px] sm:text-[10px] font-extrabold text-white whitespace-nowrap shadow-[0_4px_14px_rgba(244,63,94,0.8)] border border-white/80 bg-gradient-to-r from-[#F43F5E] to-[#B45309] animate-bounce inline-flex items-center gap-1">
+              <span className="absolute -top-6 sm:-top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[8.5px] sm:text-[10px] font-extrabold text-white whitespace-nowrap shadow-[0_4px_14px_rgba(244,63,94,0.8)] border border-white/80 bg-gradient-to-r from-[#F43F5E] to-[#B45309] animate-pop-in inline-flex items-center gap-1">
                 <AppleEmoji emoji={mode === 'ARREST_CUFF' ? '🚐' : '🪖'} />
                 <span>{mode === 'ARREST_CUFF' ? 'БУСИФИКАЦИЯ!' : 'В УЧЕБКУ!'}</span>
               </span>

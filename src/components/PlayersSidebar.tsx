@@ -120,6 +120,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
   const [confirmSurrender, setConfirmSurrender] = useState(false);
   const [playingPadId, setPlayingPadId] = useState<string | null>(null);
+  const [soundpadOpen, setSoundpadOpen] = useState(false);
   const [deltas, setDeltas] = useState<CashDeltaItem[]>([]);
   const prevCashRef = useRef<Record<string, number>>({});
   const deltaTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -656,7 +657,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                       : 'bg-gradient-to-br from-[#201A12] to-[#101219] border-[#E5B869]/60 text-[#F3D082] shadow-[0_0_18px_rgba(229,184,105,0.18)]'
                     : 'bg-gradient-to-br from-[#10221E] via-[#131922] to-[#0D1017] border-[#10B981]/45 hover:border-[#E5B869]/70 text-[#F8FAFC] shadow-[inset_0_1px_0_rgba(110,231,183,0.2),0_8px_20px_rgba(0,0,0,0.5)]'
                 }`}
-                title="Открыть VIP-лимит и кредитную линию банка"
+                title="Открыть кредитную линию банка"
               >
                 <div
                   aria-hidden="true"
@@ -672,17 +673,17 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                         <span className="font-display font-extrabold text-[11px] tracking-wider text-[#F8FAFC]">
                           КРЕДИТ
                         </span>
-                        <span
-                          className={`px-1.5 py-[0.5px] rounded text-[8px] font-mono-num font-bold uppercase ${
-                            myCredit
-                              ? urgent
+                        {myCredit && (
+                          <span
+                            className={`px-1.5 py-[0.5px] rounded text-[8px] font-mono-num font-bold uppercase ${
+                              urgent
                                 ? 'bg-[#F43F5E]/25 text-rose-200'
                                 : 'bg-[#E5B869]/20 text-[#F3D082]'
-                              : 'bg-[#10B981]/20 border border-[#10B981]/35 text-[#6EE7B7]'
-                          }`}
-                        >
-                          {myCredit ? (urgent ? 'СРОЧНО' : 'АКТИВЕН') : 'VIP ЛИМИТ'}
-                        </span>
+                            }`}
+                          >
+                            {urgent ? 'СРОЧНО' : 'АКТИВЕН'}
+                          </span>
+                        )}
                       </span>
                       <span className="block font-mono-num text-[10px] font-semibold text-neutral-300 mt-0.5">
                         {myCredit
@@ -711,60 +712,119 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                 )}
               </button>
 
-              {/* Физический DJ / StreamDeck Саундпад */}
-              <div className="space-y-1.5 pt-0.5 min-w-0">
-                <div className="flex items-center justify-between px-0.5 text-[9px] uppercase tracking-[0.14em] text-neutral-500 font-bold">
-                  <span>Soundpad Deck</span>
-                  {tauntCooldownLeft > 0 ? (
-                    <span className="font-mono-num text-[#E5B869] normal-case tracking-normal">
-                      ⏳ {tauntCooldownLeft}с
-                    </span>
-                  ) : (
-                    <span className="font-mono-num text-[#10B981]">LIVE</span>
-                  )}
-                </div>
-
-                <div className="sidebar-soundpad-grid grid grid-cols-2 gap-1 min-w-0 chat-scrollbar">
-                  {TAUNTS.map((pad, idx) => {
-                    const isPlaying = activeTauntPadId === pad.id;
-                    const isOddLast = TAUNTS.length % 2 === 1 && idx === TAUNTS.length - 1;
-                    return (
-                      <button
-                        key={pad.id}
-                        type="button"
-                        data-testid={`taunt-voice-${pad.id}`}
-                        disabled={tauntCooldownLeft > 0}
-                        onClick={() => triggerPadTaunt(pad.id)}
-                        title={
-                          tauntCooldownLeft > 0
-                            ? `Общий кулдаун: ${tauntCooldownLeft}с`
-                            : `${pad.label} (с озвучкой)`
+              {/* Выпадающий DJ / StreamDeck Саундпад */}
+              <div className="pt-0.5 min-w-0">
+                <button
+                  type="button"
+                  data-testid="soundpad-toggle-btn"
+                  aria-expanded={soundpadOpen}
+                  onClick={() => setSoundpadOpen((v) => !v)}
+                  className={`w-full px-2.5 py-2 rounded-xl border flex items-center justify-between gap-2 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+                    soundpadOpen
+                      ? 'bg-gradient-to-br from-[#1B1F2C] to-[#11141C] border-[#E5B869]/50 shadow-[0_0_16px_rgba(229,184,105,0.14),inset_0_1px_0_rgba(255,255,255,0.1)]'
+                      : 'bg-gradient-to-br from-[#141822] to-[#0D1017] border-white/10 hover:border-[#E5B869]/40 hover:bg-[#191D29] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="w-6 h-6 rounded-lg bg-[#090C11]/90 border border-white/10 flex items-center justify-center shrink-0">
+                      <SoundpadEqIcon
+                        playing={Boolean(activeTauntPadId)}
+                        accentHex={
+                          TAUNTS.find((t) => t.id === activeTauntPadId)?.ledHex || '#E5B869'
                         }
-                        className={`streamdeck-pad w-full min-w-0 py-1.5 pl-2.5 pr-1.5 rounded-xl overflow-hidden disabled:opacity-40 text-left flex items-center justify-between gap-1 cursor-pointer ${
-                          isOddLast ? 'col-span-2' : ''
-                        } ${
-                          isPlaying ? 'animate-pad-playing !border-[#E5B869]/75' : ''
-                        }`}
-                      >
-                        {/* Левая неоновая LED-полоса пэда */}
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            backgroundColor: pad.ledHex,
-                            boxShadow: isPlaying
-                              ? `0 0 14px ${pad.ledHex}, 2px 0 16px ${pad.ledHex}`
-                              : `0 0 8px ${pad.ledHex}aa`,
-                          }}
-                          className="pointer-events-none absolute left-0 inset-y-1 w-[3px] rounded-r-full"
-                        />
-                        <span className="min-w-0 flex-1 text-[8.5px] font-bold text-[#F1F5F9] leading-[1.1] whitespace-normal break-words flex items-center gap-0.5 tracking-tight">
-                          <AppleEmoji emoji={pad.emoji} />
-                          <span>{pad.label}</span>
-                        </span>
-                        <SoundpadEqIcon playing={isPlaying} accentHex={pad.ledHex} />
-                      </button>
-                    );
-                  })}
+                      />
+                    </span>
+                    <span className="text-left leading-tight min-w-0">
+                      <span className="block font-display text-[10px] font-bold uppercase tracking-[0.1em] text-[#F1F5F9]">
+                        Soundpad Deck
+                      </span>
+                      <span className="block text-[9px] text-neutral-400 font-medium truncate">
+                        {activeTauntPadId
+                          ? TAUNTS.find((t) => t.id === activeTauntPadId)?.label || 'Звук...'
+                          : `${TAUNTS.length} фраз · Озвучка`}
+                      </span>
+                    </span>
+                  </span>
+
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {tauntCooldownLeft > 0 ? (
+                      <span className="px-1.5 py-0.5 rounded-md bg-[#E5B869]/15 border border-[#E5B869]/30 font-mono-num text-[9px] font-bold text-[#F3D082]">
+                        ⏳ {tauntCooldownLeft}с
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 rounded-md bg-[#10B981]/15 border border-[#10B981]/30 font-mono-num text-[8.5px] font-bold text-[#6EE7B7]">
+                        LIVE
+                      </span>
+                    )}
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`text-neutral-400 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                        soundpadOpen ? 'rotate-180 text-[#E5B869]' : ''
+                      }`}
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </button>
+
+                <div
+                  className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                    soundpadOpen
+                      ? 'grid-rows-[1fr] opacity-100 mt-1.5'
+                      : 'grid-rows-[0fr] opacity-0 mt-0 pointer-events-none'
+                  }`}
+                >
+                  <div className="overflow-hidden min-h-0">
+                    <div className="sidebar-soundpad-grid grid grid-cols-2 gap-1 min-w-0 max-h-[210px] overflow-y-auto chat-scrollbar pr-0.5 pb-0.5">
+                      {TAUNTS.map((pad, idx) => {
+                        const isPlaying = activeTauntPadId === pad.id;
+                        const isOddLast = TAUNTS.length % 2 === 1 && idx === TAUNTS.length - 1;
+                        return (
+                          <button
+                            key={pad.id}
+                            type="button"
+                            data-testid={`taunt-voice-${pad.id}`}
+                            disabled={tauntCooldownLeft > 0}
+                            onClick={() => triggerPadTaunt(pad.id)}
+                            title={
+                              tauntCooldownLeft > 0
+                                ? `Общий кулдаун: ${tauntCooldownLeft}с`
+                                : `${pad.label} (с озвучкой)`
+                            }
+                            className={`streamdeck-pad w-full min-w-0 py-1.5 pl-2.5 pr-1.5 rounded-xl overflow-hidden disabled:opacity-40 text-left flex items-center justify-between gap-1 cursor-pointer ${
+                              isOddLast ? 'col-span-2' : ''
+                            } ${
+                              isPlaying ? 'animate-pad-playing !border-[#E5B869]/75' : ''
+                            }`}
+                          >
+                            {/* Левая неоновая LED-полоса пэда */}
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                backgroundColor: pad.ledHex,
+                                boxShadow: isPlaying
+                                  ? `0 0 14px ${pad.ledHex}, 2px 0 16px ${pad.ledHex}`
+                                  : `0 0 8px ${pad.ledHex}aa`,
+                              }}
+                              className="pointer-events-none absolute left-0 inset-y-1 w-[3px] rounded-r-full"
+                            />
+                            <span className="min-w-0 flex-1 text-[8.5px] font-bold text-[#F1F5F9] leading-[1.1] whitespace-normal break-words flex items-center gap-0.5 tracking-tight">
+                              <AppleEmoji emoji={pad.emoji} />
+                              <span>{pad.label}</span>
+                            </span>
+                            <SoundpadEqIcon playing={isPlaying} accentHex={pad.ledHex} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

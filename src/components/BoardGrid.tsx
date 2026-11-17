@@ -24,6 +24,7 @@ import { AppleEmoji } from './AppleEmoji.tsx';
 import { BoardTokensLayer } from './BoardTokensLayer.tsx';
 import { CellArtwork } from './CellArtwork.tsx';
 import { CenterStage, TradeDraftState } from './CenterStage.tsx';
+import { PlayerAvatar } from './PlayerAvatar.tsx';
 
 const formatDollar = (value: number): string =>
   value.toLocaleString('ru-RU').replace(/\u00a0/g, ' ');
@@ -644,10 +645,11 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             };
             if (owner) {
               if (rt?.isMortgaged) {
-                cellBgStyle.background = `repeating-linear-gradient(-45deg, color-mix(in srgb, ${owner.color} 22%, #0e1017), color-mix(in srgb, ${owner.color} 22%, #0e1017) 6px, #161a26 6px, #161a26 12px)`;
+                cellBgStyle.background = `repeating-linear-gradient(-45deg, color-mix(in srgb, ${owner.color} 28%, #0e1017), color-mix(in srgb, ${owner.color} 28%, #0e1017) 6px, #161a26 6px, #161a26 12px)`;
+                cellBgStyle.boxShadow = `inset 0 0 0 1px color-mix(in srgb, ${owner.color} 45%, rgba(255,255,255,0.12))`;
               } else {
-                cellBgStyle.background = `linear-gradient(165deg, color-mix(in srgb, ${owner.color} 34%, #151924) 0%, color-mix(in srgb, ${owner.color} 16%, #0e1118) 100%)`;
-                cellBgStyle.boxShadow = `inset 0 0 18px color-mix(in srgb, ${owner.color} 26%, transparent), inset 0 1px 0 rgba(255,255,255,0.14)`;
+                cellBgStyle.background = `linear-gradient(165deg, color-mix(in srgb, ${owner.color} 42%, #151924) 0%, color-mix(in srgb, ${owner.color} 22%, #0d1017) 100%)`;
+                cellBgStyle.boxShadow = `inset 0 0 0 1.5px color-mix(in srgb, ${owner.color} 78%, rgba(255,255,255,0.22)), inset 0 0 22px color-mix(in srgb, ${owner.color} 36%, transparent)`;
               }
             } else if (isGoldCorner) {
               cellBgStyle.background =
@@ -690,7 +692,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                   : '#E5B869');
 
             const cellSurfaceBorderClass = owner
-              ? 'border border-white/15 border-t-white/25'
+              ? 'border border-white/10'
               : isGoldCorner
               ? 'border border-[#E5B869]/45 shadow-[inset_0_1px_0_rgba(243,208,130,0.25)]'
               : isCarmineCorner
@@ -766,7 +768,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 onMouseEnter={() => group && setHoveredGroupId(group.id)}
                 onMouseLeave={() => group && setHoveredGroupId((cur) => (cur === group.id ? null : cur))}
                 title={displayShortName}
-                className={`relative min-w-0 min-h-0 select-none cursor-pointer transition-all duration-200 overflow-visible ${cornerRadiusClass} ${cellSurfaceBorderClass} ${
+                className={`relative min-w-0 min-h-0 select-none cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-visible ${cornerRadiusClass} ${cellSurfaceBorderClass} ${
                   tradeDraft.open && !isTradableInDraft
                     ? 'opacity-30 brightness-75'
                     : activeTr && !isTradeGive && !isTradeReceive
@@ -816,18 +818,43 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                   <div
                     style={{
                       backgroundColor: owner.color,
-                      boxShadow: `0 0 10px ${owner.color}`,
+                      boxShadow: `0 0 12px ${owner.color}`,
                     }}
                     className={`pointer-events-none absolute z-15 ${
                       pos.side === 'top'
-                        ? 'bottom-0 left-0 right-0 h-[3px]'
+                        ? 'bottom-0 left-0 right-0 h-[3.5px] sm:h-[4px]'
                         : pos.side === 'bottom'
-                        ? 'top-0 left-0 right-0 h-[3px]'
+                        ? 'top-0 left-0 right-0 h-[3.5px] sm:h-[4px]'
                         : pos.side === 'left'
-                        ? 'right-0 top-0 bottom-0 w-[3px]'
-                        : 'left-0 top-0 bottom-0 w-[3px]'
+                        ? 'right-0 top-0 bottom-0 w-[3.5px] sm:w-[4px]'
+                        : 'left-0 top-0 bottom-0 w-[3.5px] sm:w-[4px]'
                     }`}
                   />
+                )}
+                {/* Мини-печать владельца (аватар + цветное кольцо) в углу клетки у центра поля */}
+                {owner && pos.side !== 'corner' && (
+                  <div
+                    style={{
+                      borderColor: owner.color,
+                      boxShadow: `0 0 8px ${owner.color}aa, 0 2px 5px rgba(0,0,0,0.95)`,
+                    }}
+                    className={`pointer-events-none absolute z-25 w-[13px] h-[13px] sm:w-[17px] sm:h-[17px] xl:w-[19px] xl:h-[19px] rounded-full bg-[#090B10] border-[1.5px] sm:border-2 overflow-hidden flex items-center justify-center animate-pop-in ${
+                      pos.side === 'top'
+                        ? 'bottom-[3px] right-[3px]'
+                        : pos.side === 'bottom'
+                        ? 'top-[3px] right-[3px]'
+                        : pos.side === 'left'
+                        ? 'right-[3px] bottom-[3px]'
+                        : 'left-[3px] bottom-[3px]'
+                    }`}
+                  >
+                    <PlayerAvatar
+                      avatar={owner.avatar}
+                      alt={owner.name}
+                      fill
+                      className={rt?.isMortgaged ? 'opacity-55 grayscale-[35%]' : ''}
+                    />
+                  </div>
                 )}
                 {/* Выразительная фрезерованная LED-плашка монополии (всегда хранит истинный цвет отрасли!) */}
                 {group && pos.side !== 'corner' && (
@@ -913,9 +940,9 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                         <span
                           style={{
                             backgroundColor: group.accentHex,
-                            boxShadow: `0 0 5px ${group.accentHex}`,
+                            boxShadow: `0 0 6px ${group.accentHex}`,
                           }}
-                          className="hidden sm:inline-block w-1.5 h-1.5 rounded-full border border-black/70 shrink-0"
+                          className="hidden sm:inline-block w-2 h-2 rounded-[2.5px] border border-black/80 shrink-0"
                         />
                       )}
                       {outerTabMobileText !== outerTabText ? (
@@ -1010,8 +1037,17 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                   <div className={`w-full h-full ${groupStripPadClass} flex items-center justify-center overflow-hidden min-w-0 min-h-0`}>
                     <div
                       style={{
-                        boxShadow: `inset 0 2px 6px rgba(0,0,0,0.72), 0 1px 0 rgba(255,255,255,0.05)`,
-                        background: `radial-gradient(circle at 50% 50%, color-mix(in srgb, ${medallionGlowHex} 22%, #0c0e15) 0%, #090b10 86%)`,
+                        boxShadow: owner && !rt?.isMortgaged
+                          ? `inset 0 2px 8px rgba(0,0,0,0.6), inset 0 0 14px color-mix(in srgb, ${owner.color} 28%, transparent)`
+                          : `inset 0 2px 6px rgba(0,0,0,0.72), 0 1px 0 rgba(255,255,255,0.05)`,
+                        background: rt?.isMortgaged
+                          ? `radial-gradient(circle at 50% 50%, rgba(9, 11, 16, 0.32) 0%, rgba(9, 11, 16, 0.62) 100%)`
+                          : owner
+                          ? `radial-gradient(circle at 50% 50%, color-mix(in srgb, ${owner.color} 34%, #0f131d) 0%, color-mix(in srgb, ${owner.color} 20%, rgba(9, 11, 16, 0.85)) 88%)`
+                          : `radial-gradient(circle at 50% 50%, color-mix(in srgb, ${medallionGlowHex} 20%, #0c0e15) 0%, #090b10 86%)`,
+                        borderColor: owner && !rt?.isMortgaged
+                          ? `color-mix(in srgb, ${owner.color} 45%, rgba(255,255,255,0.12))`
+                          : undefined,
                       }}
                       className="w-full h-full rounded-[3.5px] sm:rounded-[6px] border border-white/[0.07] flex items-center justify-center p-[1px] sm:p-[2px] overflow-hidden"
                     >

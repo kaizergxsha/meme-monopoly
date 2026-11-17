@@ -11,46 +11,76 @@ const PIP_POSITIONS: Record<number, number[]> = {
   6: [0, 2, 3, 5, 6, 8],
 };
 
-export function getDiceSkinSurfaceStyle(skin: DiceSkin): React.CSSProperties {
-  if (skin === 'neon') {
-    return {
-      background:
-        'conic-gradient(from 90deg at 50% 50%, #7c3aed 0deg 90deg, #f43f8a 90deg 180deg, #7c3aed 180deg 270deg, #2dd4bf 270deg 360deg)',
-      color: '#ffffff',
-      border: '1px solid rgba(255,255,255,0.35)',
-      boxShadow: '0 2px 8px rgba(124,58,237,0.5)',
-    };
+export function getDiceSkinSurfaceStyle(skin: DiceSkin | string): React.CSSProperties {
+  switch (skin) {
+    case 'obsidian_frost':
+      return {
+        background:
+          'linear-gradient(145deg, rgba(30, 35, 50, 0.78) 0%, rgba(12, 15, 24, 0.88) 100%)',
+        backdropFilter: 'blur(14px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(140%)',
+        color: '#E2E8F0',
+        border: '1px solid rgba(255, 255, 255, 0.24)',
+        boxShadow:
+          '0 6px 18px rgba(0, 0, 0, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.32), inset 0 -3px 8px rgba(0, 0, 0, 0.45)',
+      };
+    case 'cyber_prism':
+      return {
+        background:
+          'linear-gradient(135deg, rgba(56, 189, 248, 0.34) 0%, rgba(168, 85, 247, 0.32) 52%, rgba(236, 72, 153, 0.3) 100%)',
+        backdropFilter: 'blur(14px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(180%)',
+        color: '#FFFFFF',
+        border: '1px solid rgba(255, 255, 255, 0.42)',
+        boxShadow:
+          '0 6px 20px rgba(168, 85, 247, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.65), inset 0 -3px 8px rgba(88, 28, 135, 0.28)',
+      };
+    case 'emerald_aero':
+      return {
+        background:
+          'linear-gradient(145deg, rgba(16, 185, 129, 0.34) 0%, rgba(6, 182, 212, 0.22) 100%)',
+        backdropFilter: 'blur(14px) saturate(165%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(165%)',
+        color: '#ECFDF5',
+        border: '1px solid rgba(167, 243, 208, 0.48)',
+        boxShadow:
+          '0 6px 18px rgba(16, 185, 129, 0.32), inset 0 1px 1px rgba(255, 255, 255, 0.6), inset 0 -3px 8px rgba(6, 78, 59, 0.28)',
+      };
+    case 'crimson_pulse':
+      return {
+        background:
+          'linear-gradient(145deg, rgba(244, 63, 94, 0.38) 0%, rgba(159, 18, 57, 0.28) 100%)',
+        backdropFilter: 'blur(14px) saturate(165%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(165%)',
+        color: '#FFF1F2',
+        border: '1px solid rgba(253, 164, 175, 0.48)',
+        boxShadow:
+          '0 6px 18px rgba(244, 63, 94, 0.32), inset 0 1px 1px rgba(255, 255, 255, 0.58), inset 0 -3px 8px rgba(136, 19, 55, 0.32)',
+      };
+    case 'arctic_pearl':
+      return {
+        background:
+          'linear-gradient(145deg, rgba(147, 197, 253, 0.36) 0%, rgba(59, 130, 246, 0.22) 100%)',
+        backdropFilter: 'blur(14px) saturate(165%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(165%)',
+        color: '#F0F9FF',
+        border: '1px solid rgba(191, 219, 254, 0.55)',
+        boxShadow:
+          '0 6px 18px rgba(59, 130, 246, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.7), inset 0 -3px 8px rgba(30, 58, 138, 0.25)',
+      };
+    case 'liquid_glass':
+    default:
+      return {
+        background:
+          'linear-gradient(145deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.08) 100%)',
+        backdropFilter: 'blur(16px) saturate(170%)',
+        WebkitBackdropFilter: 'blur(16px) saturate(170%)',
+        color: '#FFFFFF',
+        border: '1px solid rgba(255, 255, 255, 0.48)',
+        boxShadow:
+          '0 6px 20px rgba(0, 0, 0, 0.38), inset 0 1.5px 1px rgba(255, 255, 255, 0.75), inset 0 -3px 8px rgba(15, 23, 42, 0.22)',
+      };
   }
-  if (skin === 'gold') {
-    return {
-      background: 'linear-gradient(135deg, #fde047 0%, #f59e0b 100%)',
-      color: '#171717',
-      border: '1px solid rgba(254,240,138,0.8)',
-      boxShadow: '0 2px 8px rgba(245,158,11,0.45)',
-    };
-  }
-  if (skin === 'gopnik') {
-    return {
-      background: '#141418',
-      color: '#facc15',
-      border: '1.5px solid #52525b',
-      boxShadow: '0 2px 6px rgba(0,0,0,0.8)',
-    };
-  }
-  if (skin === 'comic') {
-    return {
-      background: '#f43f5e',
-      color: '#fef08a',
-      border: '1.5px solid #09090b',
-      boxShadow: '2px 2px 0px #09090b',
-    };
-  }
-  return {
-    background: '#ffffff',
-    color: '#171717',
-    border: '1px solid rgba(0,0,0,0.2)',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
-  };
 }
 
 interface MiniStyledDieProps {
@@ -97,7 +127,11 @@ export const MiniStyledDie: React.FC<MiniStyledDieProps> = ({
         <span key={idx} className="flex items-center justify-center">
           {pips.includes(idx) && (
             <span
-              style={{ width: `${pipPx}px`, height: `${pipPx}px` }}
+              style={{
+                width: `${pipPx}px`,
+                height: `${pipPx}px`,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.45)',
+              }}
               className="rounded-full bg-current"
             />
           )}
