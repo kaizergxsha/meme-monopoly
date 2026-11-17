@@ -11,7 +11,7 @@ import {
   TauntEvent,
   TradeSide,
 } from '../../shared/types.ts';
-import { MEME_AVATARS, TAUNTS, TOKEN_COLORS } from '../../shared/memeContent.ts';
+import { MEME_AVATARS, pickRandomGuestNickname, TAUNTS, TOKEN_COLORS } from '../../shared/memeContent.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
 
 function generateGuestPlayerId(): string {
@@ -23,6 +23,14 @@ function getOrCreatePlayerId(): string {
   if (existing) return existing;
   const created = generateGuestPlayerId();
   localStorage.setItem('mm_player_id', created);
+  return created;
+}
+
+function getOrCreateGuestName(): string {
+  const existing = localStorage.getItem('mm_name');
+  if (existing && existing.trim()) return existing;
+  const created = pickRandomGuestNickname();
+  localStorage.setItem('mm_name', created);
   return created;
 }
 
@@ -59,7 +67,7 @@ export function useGameSocket() {
         : TOKEN_COLORS[0].hex;
     return {
       playerId: getOrCreatePlayerId(),
-      name: localStorage.getItem('mm_name') || `Кент_${Math.floor(Math.random() * 900 + 100)}`,
+      name: getOrCreateGuestName(),
       avatar: localStorage.getItem('mm_avatar') || MEME_AVATARS[0].emoji,
       color: validColor,
       diceSkin: (localStorage.getItem('mm_dice_skin') as DiceSkin) || 'classic',
@@ -156,7 +164,8 @@ export function useGameSocket() {
       setConnected(true);
       const params = new URLSearchParams(window.location.search);
       const urlCode = params.get('room');
-      const activeCode = localStorage.getItem('mm_active_room');
+      const activeCode = sessionStorage.getItem('mm_active_room');
+      localStorage.removeItem('mm_active_room');
       const reconnectCode = urlCode || activeCode;
       if (reconnectCode) {
         const curProfile = profileRef.current;
@@ -174,7 +183,12 @@ export function useGameSocket() {
             if (res.ok) {
               adoptReconnectedPlayerId(res.playerId);
             } else {
-              localStorage.removeItem('mm_active_room');
+              sessionStorage.removeItem('mm_active_room');
+              if (urlCode) {
+                const cleanUrl = new URL(window.location.href);
+                cleanUrl.searchParams.delete('room');
+                window.history.replaceState({}, '', cleanUrl.toString());
+              }
               if (urlCode && res.error) {
                 showError(res.error);
               }
@@ -257,10 +271,10 @@ export function useGameSocket() {
 
       setRoomState(nextState);
       if (nextState.status !== 'FINISHED') {
-        localStorage.setItem('mm_active_room', nextState.code);
+        sessionStorage.setItem('mm_active_room', nextState.code);
         localStorage.setItem('mm_last_room', nextState.code);
       } else {
-        localStorage.removeItem('mm_active_room');
+        sessionStorage.removeItem('mm_active_room');
         localStorage.removeItem('mm_last_room');
       }
       // Обновляем URL для удобного шеринга ссылки с друзьями
@@ -536,6 +550,7 @@ export function useGameSocket() {
     leaveRoom: () => {
       const leavingCode = roomState?.status === 'PLAYING' ? roomState.code : null;
       socketRef.current?.emit('room:leave');
+      sessionStorage.removeItem('mm_active_room');
       localStorage.removeItem('mm_active_room');
       if (leavingCode) {
         localStorage.setItem('mm_last_room', leavingCode);
