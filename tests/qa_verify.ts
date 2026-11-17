@@ -723,7 +723,7 @@ function testEngineMechanics() {
     throw new Error(`Expected reconnect by nickname to restore rc_host, got: ${JSON.stringify({ ok: reconnByName.ok, playerId: reconnByName.playerId })}`);
   }
   rReconn.state.players[0].isConnected = false;
-  const reconnBySlot = gm.joinRoom(rReconn.state.code, {
+  const reconnByStranger = gm.joinRoom(rReconn.state.code, {
     playerId: 'rc_fresh_browser',
     socketId: 'src3',
     name: 'ДругоеИмя',
@@ -731,8 +731,19 @@ function testEngineMechanics() {
     color: '#2563eb',
     diceSkin: 'classic',
   });
-  if (!reconnBySlot.ok || reconnBySlot.playerId !== 'rc_host' || !rReconn.state.players[0].isConnected) {
-    throw new Error(`Expected reconnect to disconnected human slot, got: ${JSON.stringify({ ok: reconnBySlot.ok, playerId: reconnBySlot.playerId })}`);
+  if (reconnByStranger.ok) {
+    throw new Error(`Expected unrelated stranger NOT to hijack disconnected human slot, got: ${JSON.stringify(reconnByStranger)}`);
+  }
+  const reconnById = gm.joinRoom(rReconn.state.code, {
+    playerId: 'rc_host',
+    socketId: 'src4',
+    name: 'МаксимТест',
+    avatar: '😎',
+    color: '#dc2626',
+    diceSkin: 'classic',
+  });
+  if (!reconnById.ok || reconnById.playerId !== 'rc_host' || !rReconn.state.players[0].isConnected) {
+    throw new Error(`Expected reconnect by playerId to restore rc_host, got: ${JSON.stringify({ ok: reconnById.ok, playerId: reconnById.playerId })}`);
   }
 
   // 12. Тест двухэтапного Шанса (фаза 'CHANCE' -> показ плашки с effectLabel -> acknowledgeChance -> применение эффекта)
