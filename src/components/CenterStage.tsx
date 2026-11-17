@@ -12,6 +12,7 @@ import {
 } from '../../shared/rules.ts';
 import { DiceSkin, PlayerState, RoomState, SpeedDieFace, TradeSide } from '../../shared/types.ts';
 import { emitAckChance } from '../hooks/useGameSocket.ts';
+import { useCockpitMode } from '../hooks/useCockpitMode.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
 import { AppleEmoji, renderAppleEmojis } from './AppleEmoji.tsx';
 import { IndustryCardBanner } from './CardIllustration.tsx';
@@ -117,6 +118,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
   onRespondTrade,
   onCastKickVote,
 }) => {
+  const { isCockpit, isCompactHeight } = useCockpitMode();
   const [chatDraft, setChatDraft] = useState('');
   const [logFilter, setLogFilter] = useState<'ALL' | 'CHAT' | 'DICE' | 'TRADE'>('ALL');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -274,6 +276,8 @@ export const CenterStage: React.FC<CenterStageProps> = ({
     showAuctionCard ||
     (showMyTurnActionCard && roomState.phase !== 'PRE_ROLL');
 
+  const expandCenterCard = isBlockingCenterCardOpen && (!isCockpit || isCompactHeight || tradeDraft.open);
+
   // Крупные кубики всплывают по центру во время шагов фишки и скрываются сразу при открытии карточки выбора, чтобы не перекрывать кнопки
   const showCenterDice =
     !!roomState.lastDice &&
@@ -284,7 +288,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
     <div
       id="center-stage-arena"
       style={{ gridRow: '2 / span 9', gridColumn: '2 / span 9' }}
-      className="min-w-0 min-h-0 bg-gradient-to-b from-[#11141D] via-[#0D1017] to-[#090B10] border border-white/[0.07] rounded-[8px] sm:rounded-[12px] m-[1px] sm:m-[2px] p-1.5 sm:p-2.5 md:p-3.5 flex flex-col justify-between overflow-hidden relative shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_48px_rgba(0,0,0,0.72)]"
+      className="min-w-0 min-h-0 bg-gradient-to-b from-[#11141D] via-[#0D1017] to-[#090B10] border border-white/[0.07] rounded-[8px] sm:rounded-[12px] m-[1px] sm:m-[2px] p-1 sm:p-2 md:p-3 flex flex-col justify-between overflow-hidden relative shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_48px_rgba(0,0,0,0.72)]"
     >
       {/* Тонкий верхний хайроллер-блик центрального терминала */}
       <div
@@ -295,7 +299,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
       {/* 1. ВЕРХНЯЯ ЗОНА: Плашка голосования за кик + Оникс-карточка активного действия / Смарт-контракта ИЛИ компактная пилюля времени */}
       <div
         className={`relative z-20 shrink-0 ${
-          isBlockingCenterCardOpen ? 'max-lg:max-h-full max-lg:flex-1 lg:max-h-[75%]' : 'max-h-[75%]'
+          expandCenterCard ? 'max-h-full flex-1' : 'max-h-[75%]'
         } overflow-y-auto chat-scrollbar space-y-1.5`}
       >
         {roomState.activeKickVote && (() => {
@@ -945,7 +949,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
               borderColor: 'rgba(255,255,255,0.09)',
               boxShadow: `0 24px 58px rgba(0,0,0,0.82), 0 0 28px ${curPlayer.color}24, inset 0 1px 0 rgba(255,255,255,0.12), inset 0 2px 0 ${curPlayer.color}`,
             }}
-            className="bg-gradient-to-b from-[#161923]/96 to-[#0E1017]/96 backdrop-blur-2xl text-neutral-100 rounded-xl sm:rounded-2xl border p-2 sm:p-3 animate-action-card space-y-1.5 sm:space-y-2.5"
+            className="bg-gradient-to-b from-[#161923]/96 to-[#0E1017]/96 backdrop-blur-2xl text-neutral-100 rounded-xl sm:rounded-2xl border p-1.5 sm:p-2.5 animate-action-card space-y-1.5 sm:space-y-2"
           >
             <div className="flex items-center justify-between gap-1 sm:gap-2 text-[10px] sm:text-xs">
               <div className="hidden sm:flex items-center gap-1.5 text-neutral-400 font-mono-num text-[11px]">
@@ -954,7 +958,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                 <span className="text-white/20">|</span>
                 <span>Р.{roomState.round}</span>
               </div>
-              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <div className="flex items-center gap-1 sm:gap-2 min-w-0">
                 <span
                   style={{
                     borderColor: curPlayer.color,
@@ -965,7 +969,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                 >
                   <PlayerAvatar avatar={curPlayer.avatar} fill />
                 </span>
-                <span className="font-display font-extrabold text-[11.5px] sm:text-[13.5px] text-[#F8FAFC] whitespace-normal break-words leading-tight">
+                <span className="font-display font-extrabold text-[10.5px] sm:text-[13px] text-[#F8FAFC] truncate leading-tight">
                   {roomState.phase === 'PRE_ROLL'
                     ? 'Ваш ход!'
                     : roomState.phase === 'BUY_DECISION'
@@ -1043,7 +1047,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
             )}
 
             {roomState.phase === 'PRE_ROLL' && (
-              <div className="hidden lg:block space-y-1.5">
+              <div className="show-in-cockpit-block space-y-1.5">
                 <button
                   onClick={onRoll}
                   className="btn-emerald-3d active:translate-y-1 w-full py-2 sm:py-2.5 px-4 rounded-xl font-display font-extrabold text-[11px] sm:text-xs md:text-[13.5px] tracking-wider uppercase flex items-center justify-center gap-2 cursor-pointer"
@@ -1119,7 +1123,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                     »
                   </div>
                 </div>
-                <div className="hidden lg:grid grid-cols-2 gap-1.5 sm:gap-2">
+                <div className="show-in-cockpit-grid grid-cols-2 gap-1.5 sm:gap-2">
                   <button
                     disabled={(me?.cash ?? 0) < (BOARD_CELLS[curPlayer.position].price ?? 0)}
                     onClick={onBuy}
@@ -1184,7 +1188,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                 <button
                   type="button"
                   onClick={() => (onAckChance ?? emitAckChance)()}
-                  className="hidden lg:block btn-emerald-3d active:translate-y-1 w-full py-2 sm:py-2.5 rounded-xl font-display font-bold text-xs sm:text-sm cursor-pointer"
+                  className="show-in-cockpit-block btn-emerald-3d active:translate-y-1 w-full py-2 sm:py-2.5 rounded-xl font-display font-bold text-xs sm:text-sm cursor-pointer"
                 >
                   Применить Шанс 🃏
                 </button>
@@ -1245,12 +1249,12 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                   {canPay ? (
                     <button
                       onClick={onPayDebt}
-                      className="hidden lg:block btn-emerald-3d active:translate-y-1 w-full py-2.5 rounded-xl font-display font-bold text-xs md:text-sm cursor-pointer"
+                      className="show-in-cockpit-block btn-emerald-3d active:translate-y-1 w-full py-2.5 rounded-xl font-display font-bold text-xs md:text-sm cursor-pointer"
                     >
                       💸 Оплатить <span className="font-mono-num">{formatMoney(debt.amount)}</span>
                     </button>
                   ) : (
-                    <div className="hidden lg:grid grid-cols-2 gap-2">
+                    <div className="show-in-cockpit-grid grid-cols-2 gap-2">
                       <button
                         onClick={onOpenCredit}
                         className="btn-gold-3d py-2 rounded-xl font-display font-extrabold text-xs cursor-pointer"
@@ -1275,7 +1279,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                   🌀 {txt('Ебаный квантовый телепорт', 'Квантовый телепорт', censored)}: выберите клетку назначения на доске или ниже (+точка ={' '}
                   <span className="font-mono-num">+{formatMoney(500)}</span>):
                 </div>
-                <div className="hidden lg:flex flex-wrap gap-1 sm:gap-1.5 max-h-24 sm:max-h-28 overflow-y-auto chat-scrollbar pr-1">
+                <div className="show-in-cockpit-flex flex-wrap gap-1 sm:gap-1.5 max-h-24 sm:max-h-28 overflow-y-auto chat-scrollbar pr-1">
                   {roomState.portal.candidateCells.map((cid) => {
                     const cDef = BOARD_CELLS[cid];
                     const cRt = roomState.cells[cid];
@@ -1305,7 +1309,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                     );
                   })}
                 </div>
-                <div className="hidden lg:grid grid-cols-2 gap-1.5 sm:gap-2">
+                <div className="show-in-cockpit-grid grid-cols-2 gap-1.5 sm:gap-2">
                   <button
                     type="button"
                     disabled={roomState.portal.candidateCells.length >= 8 || (me?.cash ?? 0) < 500}
@@ -1563,7 +1567,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         🎯 Ваша очередь на торгах! (от{' '}
                         <span className="font-mono-num">{formatMoney(nextMinBid)}</span>)
                       </div>
-                      <div className="hidden lg:grid grid-cols-4 gap-1 sm:gap-1.5">
+                      <div className="show-in-cockpit-grid grid-cols-4 gap-1 sm:gap-1.5">
                         {[100, 300, 500].map((step) => (
                           <button
                             key={step}
@@ -1724,16 +1728,16 @@ export const CenterStage: React.FC<CenterStageProps> = ({
       {/* 3. НИЖНЯЯ ЗОНА 9×9: СТРУКТУРИРОВАННЫЙ ЛОГ ТЕРМИНАЛА И ЧАТ */}
       <div
         className={`flex-1 min-h-0 ${
-          isBlockingCenterCardOpen ? 'hidden lg:flex' : 'flex'
-        } flex-col justify-end pt-1 sm:pt-2 z-10`}
+          expandCenterCard ? 'hidden' : 'flex'
+        } flex-col justify-end pt-1 sm:pt-1.5 z-10`}
       >
         {/* Компактные фильтры лога */}
-        <div className="flex items-center justify-between gap-2 mb-1 border-b border-white/[0.05] pb-1">
+        <div className="flex items-center justify-between gap-1 sm:gap-2 mb-1 border-b border-white/[0.05] pb-0.5 sm:pb-1">
           <span className="hidden sm:inline-flex items-center gap-1.5 text-[9.5px] uppercase tracking-[0.14em] text-neutral-500 font-bold">
             <span className="w-1.5 h-1.5 rounded-full bg-[#E5B869]/75" />
             Лента операций
           </span>
-          <div className="flex items-center justify-end gap-1 ml-auto">
+          <div className="flex items-center justify-end gap-0.5 sm:gap-1 ml-auto overflow-x-auto chat-scrollbar">
             {(
               [
                 { id: 'ALL', label: 'Все', testId: 'log-filter-all' },
@@ -1747,7 +1751,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                 type="button"
                 data-testid={f.testId}
                 onClick={() => setLogFilter(f.id)}
-                className={`px-2 py-0.5 rounded-md text-[9.5px] sm:text-[10px] font-bold transition cursor-pointer ${
+                className={`px-1.5 sm:px-2 py-0.5 rounded-md text-[8.5px] sm:text-[10px] font-bold transition cursor-pointer shrink-0 ${
                   logFilter === f.id
                     ? 'bg-[#191E2C] border border-[#E5B869]/40 text-[#F3D082]'
                     : 'text-neutral-500 hover:text-neutral-300 border border-transparent'
@@ -1762,7 +1766,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
         {/* Скроллящийся лог с левыми цветными индикаторами и бейджами сумм */}
         <div
           data-testid="center-chat-logs"
-          className="chat-scrollbar flex-1 min-h-0 overflow-y-auto space-y-1 sm:space-y-1.5 pr-1 text-[10.5px] sm:text-[12.5px] xl:text-[13px] leading-snug"
+          className="chat-scrollbar flex-1 min-h-0 overflow-y-auto space-y-0.5 sm:space-y-1.5 pr-0.5 sm:pr-1 text-[9.5px] sm:text-[12px] xl:text-[13px] leading-[1.3] sm:leading-snug"
         >
           {filteredLogs.slice(-60).map((entry) => {
             const rawText = txt(entry.text, entry.cleanText, censored);

@@ -18,6 +18,7 @@ import {
   txt,
 } from '../../shared/rules.ts';
 import { BoardCellDef, RoomState, TradeSide } from '../../shared/types.ts';
+import { useCockpitMode } from '../hooks/useCockpitMode.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
 import { AppleEmoji } from './AppleEmoji.tsx';
 import { BoardTokensLayer } from './BoardTokensLayer.tsx';
@@ -260,15 +261,8 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
   const lastArrestTsRef = useRef<number>(0);
   const lastTransferIdRef = useRef<string | null>(null);
   const activeTurnPlayerId = curPlayer?.id ?? '';
-  const [isMobileView, setIsMobileView] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 1024 : false
-  );
-
-  useEffect(() => {
-    const onResize = () => setIsMobileView(window.innerWidth < 1024);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+  const { isCockpit, isCompactHeight } = useCockpitMode();
+  const isMobileView = !isCockpit;
 
   // Автозакрытие поповера строго при СМЕНЕ фазы на важную фазу действия (не при каждом изменении кэша/филиалов)
   useEffect(() => {
@@ -502,7 +496,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
   return (
     <div
-      className="board-outer-box flex-1 lg:flex-none w-full lg:w-auto h-full lg:h-auto flex items-center justify-center p-[2px] sm:p-[6px] lg:px-[54px] xl:px-[58px] lg:py-[26px] overflow-hidden lg:overflow-visible relative"
+      className="board-outer-box flex items-center justify-center relative"
     >
       {/* Обёртка квадратной доски 11×11 — адаптивная под телефоны и десктопы с местом под внешние плашки цен */}
       <div
@@ -514,7 +508,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
           data-testid="board-leave-btn"
           onClick={onLeaveRoom}
           title="Покинуть комнату"
-          className="hidden lg:flex absolute -top-[24px] -right-[24px] w-7 h-7 rounded-full bg-[#12151F]/95 backdrop-blur-md border border-white/15 hover:border-[#F43F5E] hover:bg-[#F43F5E] text-neutral-300 hover:text-white text-xs font-bold items-center justify-center shadow-[0_6px_18px_rgba(0,0,0,0.75)] transition cursor-pointer z-40"
+          className="show-in-cockpit-flex absolute -top-[20px] -right-[20px] xl:-top-[24px] xl:-right-[24px] w-7 h-7 rounded-full bg-[#12151F]/95 backdrop-blur-md border border-white/15 hover:border-[#F43F5E] hover:bg-[#F43F5E] text-neutral-300 hover:text-white text-xs font-bold items-center justify-center shadow-[0_6px_18px_rgba(0,0,0,0.75)] transition cursor-pointer z-40"
         >
           ✕
         </button>
@@ -581,7 +575,8 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
               if (!owner) {
                 const pr = def.price ?? 0;
                 outerTabText = `$${pr}`;
-                outerTabMobileText = outerTabText;
+                outerTabMobileText =
+                  pr >= 1000 ? `$${Number((pr / 1000).toFixed(1))}k` : outerTabText;
               } else if (rt?.isMortgaged) {
                 outerTabText = rt.mortgageRoundsLeft ? `🔒${rt.mortgageRoundsLeft}` : '🔒';
                 outerTabMobileText = outerTabText;
@@ -597,7 +592,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 const rentVal = calculateDisplayRent(roomState.cells, def.id);
                 outerTabText = `$${rentVal}`;
                 outerTabMobileText =
-                  rentVal >= 10000
+                  rentVal >= 1000
                     ? `$${Number((rentVal / 1000).toFixed(1))}k`
                     : outerTabText;
               }
@@ -715,12 +710,12 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             // Позиционирование внешней плашки цены/ренты по 4 сторонам (LED-капсулы с JetBrains Mono)
             const outerTabPosClass =
               pos.side === 'top'
-                ? '-top-[17px] sm:-top-[23px] left-[1px] right-[1px] h-[16px] sm:h-[22px] rounded-t-[5px] sm:rounded-t-[7px]'
+                ? '-top-[15px] sm:-top-[20px] xl:-top-[23px] left-[1px] right-[1px] h-[14px] sm:h-[19px] xl:h-[22px] rounded-t-[4px] sm:rounded-t-[7px]'
                 : pos.side === 'bottom'
-                ? '-bottom-[17px] sm:-bottom-[23px] left-[1px] right-[1px] h-[16px] sm:h-[22px] rounded-b-[5px] sm:rounded-b-[7px]'
+                ? '-bottom-[15px] sm:-bottom-[20px] xl:-bottom-[23px] left-[1px] right-[1px] h-[14px] sm:h-[19px] xl:h-[22px] rounded-b-[4px] sm:rounded-b-[7px]'
                 : pos.side === 'left'
-                ? '-left-[27px] sm:-left-[49px] xl:-left-[53px] top-[1px] bottom-[1px] w-[26px] sm:w-[48px] xl:w-[52px] rounded-l-[5px] sm:rounded-l-[7px]'
-                : '-right-[27px] sm:-right-[49px] xl:-right-[53px] top-[1px] bottom-[1px] w-[26px] sm:w-[48px] xl:w-[52px] rounded-r-[5px] sm:rounded-r-[7px]';
+                ? '-left-[22px] sm:-left-[41px] lg:-left-[47px] xl:-left-[53px] top-[1px] bottom-[1px] w-[21px] sm:w-[40px] lg:w-[46px] xl:w-[52px] rounded-l-[4px] sm:rounded-l-[7px]'
+                : '-right-[22px] sm:-right-[41px] lg:-right-[47px] xl:-right-[53px] top-[1px] bottom-[1px] w-[21px] sm:w-[40px] lg:w-[46px] xl:w-[52px] rounded-r-[4px] sm:rounded-r-[7px]';
 
             // Позиционирование звёзд филиалов на внутренней границе клетки, повернутой к чату
             const branchPosClass =
@@ -906,7 +901,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                           : `0 0 14px ${ledColor}55, 0 3px 8px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.42)`,
                         textShadow: '0 1px 2px rgba(0,0,0,0.92), 0 0 2px rgba(0,0,0,0.95)',
                       }}
-                      className={`pointer-events-none absolute ${outerTabPosClass} flex items-center justify-center gap-0.5 font-mono-num text-[7px] sm:text-[10.5px] xl:text-[11.5px] font-bold text-[#F8FAFC] tracking-[-0.04em] sm:tracking-tight leading-none whitespace-nowrap animate-tab-flip transition-transform ${
+                      className={`pointer-events-none absolute ${outerTabPosClass} flex items-center justify-center gap-0.5 font-mono-num text-[6.5px] sm:text-[9.5px] lg:text-[10.5px] xl:text-[11.5px] font-bold text-[#F8FAFC] tracking-[-0.04em] sm:tracking-tight leading-none whitespace-nowrap animate-tab-flip transition-transform ${
                         isHoveredGroup ? 'scale-105 z-30' : ''
                       } ${
                         owner && !rt?.isMortgaged
@@ -1207,8 +1202,8 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 }
                 className={
                   isMobileView
-                    ? 'w-full max-w-[348px] max-h-[88dvh] flex flex-col bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.1] overflow-hidden animate-action-card'
-                    : 'fixed w-[312px] max-h-[calc(100dvh-20px)] flex flex-col bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.08] overflow-hidden z-[65] animate-action-card'
+                    ? 'w-full max-w-[min(348px,94vw)] max-h-[88dvh] flex flex-col bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.1] overflow-hidden animate-action-card'
+                    : 'fixed w-[min(308px,92vw)] max-h-[calc(100dvh-16px)] flex flex-col bg-gradient-to-b from-[#161922] to-[#0F1117] text-[#F1F5F9] rounded-2xl border border-white/[0.08] overflow-hidden z-[65] animate-action-card'
                 }
               >
                 {/* Коллекционная VIP-шапка карточки с глубоким градиентом монополии, сеткой и крупным 3D-артом */}
@@ -1217,7 +1212,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     background: `linear-gradient(135deg, color-mix(in srgb, ${headerHex} 54%, #0f1117) 0%, #141824 66%, #0f1117 100%)`,
                     boxShadow: `inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 24px rgba(0,0,0,0.45)`,
                   }}
-                  className="shrink-0 px-4 py-3 relative border-b border-white/[0.08] overflow-hidden"
+                  className={`shrink-0 ${isCompactHeight ? 'px-3.5 py-2.5' : 'px-4 py-3'} relative border-b border-white/[0.08] overflow-hidden`}
                 >
                   {/* Тонкая геометрическая сетка на фоне шапки */}
                   <svg

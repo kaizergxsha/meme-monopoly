@@ -235,9 +235,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         </div>
 
         {/* Основная сетка настроек комнаты */}
-        <div className="max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0 relative z-10">
+        <div className="max-w-6xl w-full mx-auto grid grid-cols-1 md:grid-cols-12 gap-3.5 md:gap-4 flex-1 min-h-0 relative z-10">
           {/* Левая колонка: Игроки и кастомизация */}
-          <div className="lg:col-span-5 flex flex-col gap-4">
+          <div className="md:col-span-5 flex flex-col gap-3.5 md:gap-4">
             <div className={`${GLASS_CARD} p-4`}>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xs font-display font-extrabold uppercase tracking-wider text-[#F8FAFC]">
@@ -456,7 +456,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           </div>
 
           {/* Правая колонка: Режимы и настройки правил */}
-          <div className={`lg:col-span-7 ${GLASS_CARD} p-4 space-y-4`}>
+          <div className={`md:col-span-7 ${GLASS_CARD} p-3.5 md:p-4 space-y-3.5 md:space-y-4`}>
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-display font-extrabold uppercase tracking-wider text-[#E5B869]">
                 Режим игры и регламент стола
@@ -678,33 +678,31 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     r.status === 'PLAYING' &&
     Boolean(
       r.playerIds?.includes(profile.playerId) ||
-        (normalizedMyName &&
-          r.playerNames?.some((n) => n.trim().toLowerCase() === normalizedMyName)) ||
-        lastRoomCode === r.code
+        lastRoomCode === r.code ||
+        (r.hasDisconnectedHumans &&
+          normalizedMyName &&
+          r.playerNames?.some((n) => n.trim().toLowerCase() === normalizedMyName))
     );
-  const myActiveRoom =
-    publicRooms.find((r) => isMyOngoingRoom(r)) ||
-    publicRooms.find((r) => r.status === 'PLAYING' && r.hasDisconnectedHumans) ||
-    null;
+  const myActiveRoom = publicRooms.find((r) => isMyOngoingRoom(r)) || null;
 
   return (
     <div
       onClick={() => setOpenModeInfo(null)}
-      className="h-full w-full flex flex-col bg-[#08090C] p-3 md:p-6 overflow-y-auto relative"
+      className="h-full w-full flex flex-col bg-[#08090C] p-2.5 sm:p-4 lg:p-5 overflow-y-auto relative"
     >
       <AmbientBackdrop />
 
       {/* Фрезерованная шапка терминала в эстетике Dark Luxury */}
       <div
-        className={`max-w-6xl w-full mx-auto flex flex-wrap items-center justify-between gap-3 px-4 py-3 mb-5 relative z-10 ${GLASS_CARD}`}
+        className={`max-w-6xl w-full mx-auto flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 mb-3.5 sm:mb-5 relative z-10 ${GLASS_CARD}`}
       >
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#1B1811] via-[#12151E] to-[#0A0C11] flex items-center justify-center shadow-[0_10px_28px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(229,184,105,0.35)] border border-[#E5B869]/55 shrink-0">
-            <DiceSkinPairPreview skin="gold" size={17} />
+        <div className="flex items-center gap-2.5 sm:gap-3.5">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-[#1B1811] via-[#12151E] to-[#0A0C11] flex items-center justify-center shadow-[0_10px_28px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(229,184,105,0.35)] border border-[#E5B869]/55 shrink-0">
+            <DiceSkinPairPreview skin="gold" size={16} />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-display text-lg md:text-xl font-black tracking-tight text-[#F8FAFC]">
+              <h1 className="font-display text-base sm:text-lg md:text-xl font-black tracking-tight text-[#F8FAFC]">
                 МЕМНАЯ МОНОПОЛИЯ
               </h1>
               <span className="px-2 py-0.5 rounded-md bg-[#E5B869]/18 border border-[#E5B869]/50 font-mono-num text-[11px] font-extrabold text-[#F3D082]">
@@ -785,9 +783,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         </div>
       )}
 
-      <div className="max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-5 relative z-10">
-        {/* 01. Профиль игрока */}
-        <div className={`lg:col-span-4 ${GLASS_CARD} p-5 space-y-4`}>
+      <div className="max-w-6xl w-full mx-auto grid grid-cols-1 md:grid-cols-12 gap-3.5 sm:gap-5 relative z-10">
+        {/* 01. Профиль игрока (на мобильных ниже создания комнаты и списка столов для быстрого входа) */}
+        <div className={`order-2 md:order-1 md:col-span-5 lg:col-span-4 ${GLASS_CARD} p-3.5 sm:p-4 xl:p-5 space-y-3 sm:space-y-4`}>
           <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-2.5">
             <div className="flex items-center gap-2">
               <span className="px-1.5 py-0.5 rounded bg-[#E5B869]/18 border border-[#E5B869]/40 font-mono-num text-[10px] font-extrabold text-[#F3D082]">
@@ -937,8 +935,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         </div>
 
         {/* 02 & 03. Создание комнаты и вход по коду */}
-        <div className="lg:col-span-8 flex flex-col gap-5">
-          <div className={`${GLASS_CARD} p-5 relative z-20`}>
+        <div className="order-1 md:order-2 md:col-span-7 lg:col-span-8 flex flex-col gap-3.5 sm:gap-5">
+          <div className={`${GLASS_CARD} p-3.5 sm:p-4 xl:p-5 relative z-20`}>
             <div className="flex items-center gap-2 border-b border-white/[0.06] pb-2.5 mb-3.5">
               <span className="px-1.5 py-0.5 rounded bg-[#10B981]/20 border border-[#10B981]/45 font-mono-num text-[10px] font-extrabold text-[#6EE7B7]">
                 02
@@ -1012,7 +1010,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               <div className="space-y-2">
                 {publicRooms.map((r) => {
                   const isMine = isMyOngoingRoom(r);
-                  const canReconnect = r.status === 'PLAYING';
+                  const canReconnect = r.status === 'PLAYING' && isMine;
                   return (
                     <div
                       key={r.code}

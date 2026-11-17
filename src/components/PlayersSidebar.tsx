@@ -8,6 +8,7 @@ import {
   txt,
 } from '../../shared/rules.ts';
 import { RoomState, TauntEvent } from '../../shared/types.ts';
+import { useCockpitMode } from '../hooks/useCockpitMode.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
 import { AppleEmoji } from './AppleEmoji.tsx';
 import { PlayerAvatar } from './PlayerAvatar.tsx';
@@ -114,6 +115,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
   onSendTaunt,
   onSurrender,
 }) => {
+  const { isCockpit } = useCockpitMode();
   const [menuPlayerId, setMenuPlayerId] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
   const [confirmSurrender, setConfirmSurrender] = useState(false);
@@ -214,7 +216,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
         />
       )}
 
-      <aside className="w-full max-w-md lg:max-w-none lg:w-[236px] xl:w-[252px] shrink-0 h-full flex flex-col justify-start lg:justify-center gap-2.5 py-2 lg:py-3 px-2 select-none relative z-40">
+      <aside className="cockpit-sidebar-aside shrink-0 h-full flex flex-col select-none relative z-40">
         {/* Заголовок левого HUD резидентов */}
         <div className="px-1.5 flex items-center justify-between text-[10px] text-neutral-400 font-semibold shrink-0 uppercase tracking-[0.12em]">
           <span className="flex items-center gap-1.5 text-neutral-300">
@@ -225,7 +227,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
         </div>
 
         {/* Вертикальный стек карточек игроков на тёмном графите #141720 с мощным неоновым акцентом слева */}
-        <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 lg:flex-initial pt-3.5 pb-1 px-0.5 chat-scrollbar">
+        <div className="sidebar-players-list flex flex-col gap-1.5 xl:gap-2 px-0.5 chat-scrollbar">
           {roomState.players.map((p, idx) => {
             const isActive = idx === roomState.currentPlayerIndex && roomState.status === 'PLAYING';
             const isMenuOpen = menuPlayerId === p.id;
@@ -275,7 +277,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                             '0 10px 24px -6px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.08)',
                         }
                   }
-                  className={`relative overflow-hidden rounded-2xl pl-4 pr-3 py-2.5 transition-all duration-200 cursor-pointer ${
+                  className={`sidebar-player-card relative overflow-hidden rounded-2xl pl-3.5 pr-2.5 py-2 transition-all duration-200 cursor-pointer ${
                     p.isBankrupt
                       ? 'bg-[#0F1117]/80 border border-white/[0.06] opacity-55'
                       : isActive
@@ -313,7 +315,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                                 : `0 0 12px ${p.color}4D`,
                             }
                       }
-                      className={`w-11 h-11 shrink-0 rounded-full border-2 flex items-center justify-center text-xl overflow-hidden ${
+                      className={`sidebar-player-avatar w-10 h-10 xl:w-11 xl:h-11 shrink-0 rounded-full border-2 flex items-center justify-center text-xl overflow-hidden ${
                         p.isBankrupt ? 'grayscale opacity-60' : ''
                       }`}
                     >
@@ -397,7 +399,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                         </div>
                       ) : (
                         <div className="mt-0.5 flex items-baseline justify-between gap-1.5">
-                          <span className="font-display font-extrabold tabular-nums text-[16px] xl:text-[17.5px] leading-tight tracking-tight text-[#F8FAFC]">
+                          <span className="sidebar-player-cash font-display font-extrabold tabular-nums text-[15px] xl:text-[17.5px] leading-tight tracking-tight text-[#F8FAFC]">
                             {formatM1Cash(p.cash)}
                           </span>
 
@@ -501,14 +503,18 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                 {isMenuOpen && (
                   <div
                     style={
-                      menuAnchor
-                        ? ({
-                            '--menu-top': `${Math.max(12, Math.min(window.innerHeight - 270, menuAnchor.top))}px`,
-                            '--menu-left': `${menuAnchor.right + 12}px`,
-                          } as React.CSSProperties)
+                      isCockpit && menuAnchor
+                        ? {
+                            position: 'fixed',
+                            top: Math.max(12, Math.min(window.innerHeight - 270, menuAnchor.top)),
+                            left: Math.min(window.innerWidth - 246, menuAnchor.right + 10),
+                            width: 234,
+                          }
                         : undefined
                     }
-                    className="mt-1.5 lg:mt-0 lg:fixed lg:top-[var(--menu-top)] lg:left-[var(--menu-left)] lg:w-[238px] z-50 rounded-2xl bg-[#11141E]/98 backdrop-blur-xl border border-white/12 p-2 shadow-[0_28px_70px_rgba(0,0,0,0.92),0_0_0_1px_rgba(229,184,105,0.16)] text-left text-xs space-y-1 animate-action-card"
+                    className={`${
+                      isCockpit ? '' : 'mt-1.5'
+                    } z-50 rounded-2xl bg-[#11141E]/98 backdrop-blur-xl border border-white/12 p-2 shadow-[0_28px_70px_rgba(0,0,0,0.92),0_0_0_1px_rgba(229,184,105,0.16)] text-left text-xs space-y-1 animate-action-card`}
                   >
                     <div className="px-2.5 py-1.5 text-[10px] text-neutral-400 border-b border-white/[0.07] flex justify-between items-center font-mono-num">
                       <span>Активов: <b className="text-[#F1F5F9]">{propCount}</b></span>
@@ -643,7 +649,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                 type="button"
                 data-testid="sidebar-credit-report"
                 onClick={onOpenCredit}
-                className={`relative overflow-hidden w-full py-2.5 px-3 rounded-xl flex flex-col gap-1.5 transition cursor-pointer border ${
+                className={`sidebar-credit-btn relative overflow-hidden w-full py-2 px-3 rounded-xl flex flex-col gap-1.5 transition cursor-pointer border ${
                   myCredit
                     ? urgent
                       ? 'bg-gradient-to-br from-[#271219] to-[#120B10] border-[#F43F5E]/70 text-rose-100 shadow-[0_0_20px_rgba(244,63,94,0.28)]'
@@ -718,7 +724,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-1 min-w-0">
+                <div className="sidebar-soundpad-grid grid grid-cols-2 gap-1 min-w-0 chat-scrollbar">
                   {TAUNTS.map((pad, idx) => {
                     const isPlaying = activeTauntPadId === pad.id;
                     const isOddLast = TAUNTS.length % 2 === 1 && idx === TAUNTS.length - 1;

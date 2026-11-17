@@ -6,6 +6,7 @@ import {
   txt,
 } from '../../shared/rules.ts';
 import { RoomState } from '../../shared/types.ts';
+import { useCockpitMode } from '../hooks/useCockpitMode.ts';
 import { soundEngine } from '../utils/soundEngine.ts';
 import { AppleEmoji, renderAppleEmojis } from './AppleEmoji.tsx';
 import { ChanceCardIllustration } from './CardIllustration.tsx';
@@ -15,25 +16,17 @@ const CenterStagePortal: React.FC<{ children: React.ReactNode; backdrop?: boolea
   children,
   backdrop = false,
 }) => {
+  const { isCockpit } = useCockpitMode();
   const [arenaEl, setArenaEl] = useState<HTMLElement | null>(null);
-  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
-  );
 
   useEffect(() => {
-    const sync = () => {
-      setIsDesktop(window.innerWidth >= 1024);
-      setArenaEl(document.getElementById('center-stage-arena'));
-    };
-    sync();
-    window.addEventListener('resize', sync);
-    return () => window.removeEventListener('resize', sync);
-  }, []);
+    setArenaEl(document.getElementById('center-stage-arena'));
+  }, [isCockpit]);
 
-  if (isDesktop && arenaEl) {
+  if (isCockpit && arenaEl) {
     return createPortal(
       <div
-        className={`absolute inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 ${
+        className={`absolute inset-0 z-50 flex items-center justify-center p-1.5 sm:p-3 ${
           backdrop ? 'bg-black/68 backdrop-blur-sm pointer-events-auto' : 'pointer-events-none'
         }`}
       >
@@ -45,7 +38,7 @@ const CenterStagePortal: React.FC<{ children: React.ReactNode; backdrop?: boolea
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 ${
+      className={`fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 ${
         backdrop ? 'bg-black/70 backdrop-blur-sm' : 'pointer-events-none'
       }`}
     >
