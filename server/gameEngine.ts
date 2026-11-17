@@ -344,17 +344,12 @@ export class GameManager {
     if (!room) return { ok: false, error: 'Комната не найдена' };
 
     const normalizedName = profile.name.trim().toLowerCase();
-    // Переподключение существующего игрока: сначала по стабильному playerId, затем по нику или к отключённому слоту в активном матче
+    // Переподключение существующего игрока: сначала по стабильному playerId, затем по нику к отключённому слоту в активном матче
     let existing = room.state.players.find((p) => p.id === profile.playerId);
-    if (!existing && room.state.status === 'PLAYING') {
-      if (normalizedName) {
-        existing = room.state.players.find(
-          (p) => !p.isBot && p.name.trim().toLowerCase() === normalizedName
-        );
-      }
-      if (!existing) {
-        existing = room.state.players.find((p) => !p.isBot && !p.isConnected);
-      }
+    if (!existing && room.state.status === 'PLAYING' && normalizedName) {
+      existing = room.state.players.find(
+        (p) => !p.isBot && !p.isConnected && p.name.trim().toLowerCase() === normalizedName
+      );
     }
 
     if (existing) {

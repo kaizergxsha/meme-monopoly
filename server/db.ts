@@ -12,6 +12,7 @@ import {
   PlayerStats,
   RecentMatchSummary,
 } from '../shared/types.ts';
+import { pickRandomGuestNickname } from '../shared/memeContent.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, 'data');
@@ -300,7 +301,7 @@ function normalizeEmail(raw: string): string {
 
 function sanitizeNickname(raw?: string): string {
   const cleaned = (raw || '').trim().slice(0, 24);
-  return cleaned || `Кент_${Math.floor(Math.random() * 900 + 100)}`;
+  return cleaned || pickRandomGuestNickname();
 }
 
 function sanitizeAvatar(raw?: string): string {
