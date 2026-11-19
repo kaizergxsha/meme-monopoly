@@ -631,6 +631,7 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
         const mode = movingMode[p.id];
         const tick = stepTick[p.id] ?? 0;
         const isArrestMode = mode === 'ARREST_CUFF' || mode === 'ARREST_HAUL';
+        const isTopEdge = vp <= 10;
 
         return (
           <div
@@ -708,9 +709,24 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               )}
             </div>
 
+            {/* Маячок активного хода (высокий контраст золото-на-обсидиане, чтобы не сливался с клеткой своего цвета) */}
+            {!isArrestMode && !mode && isActive && (
+              <span
+                className={`pointer-events-none absolute left-1/2 -translate-x-1/2 px-1.5 py-[1px] rounded-full bg-[#090B11]/95 border border-[#F3D082] text-[#FDE68A] shadow-[0_0_14px_rgba(243,208,130,0.75),0_2px_8px_rgba(0,0,0,0.95)] text-[8.5px] sm:text-[10px] font-black leading-none tracking-tight whitespace-nowrap animate-bounce z-40 ${
+                  isTopEdge ? 'top-full mt-1' : '-top-4 sm:-top-5'
+                }`}
+              >
+                {isTopEdge ? '▲ ХОД' : 'ХОД ▼'}
+              </span>
+            )}
+
             {/* Плашка при бусификации или шагании фишки */}
             {isArrestMode ? (
-              <span className="absolute -top-6 sm:-top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[8.5px] sm:text-[10px] font-extrabold text-white whitespace-nowrap shadow-[0_4px_14px_rgba(244,63,94,0.8)] border border-white/80 bg-gradient-to-r from-[#F43F5E] to-[#B45309] animate-pop-in inline-flex items-center gap-1">
+              <span
+                className={`absolute left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[8.5px] sm:text-[10px] font-extrabold text-white whitespace-nowrap shadow-[0_4px_14px_rgba(244,63,94,0.8)] border border-white/80 bg-gradient-to-r from-[#F43F5E] to-[#B45309] animate-pop-in inline-flex items-center gap-1 ${
+                  isTopEdge ? 'top-full mt-1' : '-top-6 sm:-top-7'
+                }`}
+              >
                 <AppleEmoji emoji={mode === 'ARREST_CUFF' ? '🚐' : '🪖'} />
                 <span>{mode === 'ARREST_CUFF' ? 'БУСИФИКАЦИЯ!' : 'В УЧЕБКУ!'}</span>
               </span>
@@ -718,7 +734,9 @@ export const BoardTokensLayer: React.FC<BoardTokensLayerProps> = ({
               mode && (
                 <span
                   style={{ backgroundColor: p.color }}
-                  className="hidden sm:inline-block absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[9px] font-black text-white whitespace-nowrap shadow-md border border-white/60"
+                  className={`hidden sm:inline-block absolute left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full text-[9px] font-black text-white whitespace-nowrap shadow-md border border-white/60 ${
+                    isTopEdge ? 'top-full mt-1' : '-top-5'
+                  }`}
                 >
                   {p.name}
                 </span>

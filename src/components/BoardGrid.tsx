@@ -12,9 +12,11 @@ import {
   canMortgageCell,
   canSellBranch,
   canUnmortgageCell,
+  getGroupCellDefs,
   getMortgageValue,
   getTokenWalkDurationMs,
   getUnmortgageCost,
+  ownsFullMonopoly,
   txt,
 } from '../../shared/rules.ts';
 import { BoardCellDef, RoomState, TradeSide } from '../../shared/types.ts';
@@ -249,6 +251,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
     top: number;
   } | null>(null);
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
+  const [hoveredCellId, setHoveredCellId] = useState<number | null>(null);
   const [boardShake, setBoardShake] = useState(false);
   const [policeFlash, setPoliceFlash] = useState(false);
   const [flyTransfer, setFlyTransfer] = useState<{
@@ -509,7 +512,8 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
           data-testid="board-leave-btn"
           onClick={onLeaveRoom}
           title="Покинуть комнату"
-          className="show-in-cockpit-flex absolute -top-[20px] -right-[20px] xl:-top-[24px] xl:-right-[24px] w-7 h-7 rounded-full bg-[#12151F]/95 backdrop-blur-md border border-white/15 hover:border-[#F43F5E] hover:bg-[#F43F5E] text-neutral-300 hover:text-white text-xs font-bold items-center justify-center shadow-[0_6px_18px_rgba(0,0,0,0.75)] transition cursor-pointer z-40"
+          aria-label="Покинуть комнату"
+          className="show-in-cockpit-flex absolute -top-[20px] -right-[20px] xl:-top-[24px] xl:-right-[24px] w-7 h-7 rounded-full bg-[#12151F]/95 backdrop-blur-md border border-white/15 hover:border-[#F43F5E] hover:bg-[#F43F5E] text-neutral-300 hover:text-white text-xs font-bold items-center justify-center shadow-[0_6px_18px_rgba(0,0,0,0.75)] transition cursor-pointer z-[60]"
         >
           ✕
         </button>
@@ -751,24 +755,49 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
             const groupStripPadClass =
               group && pos.side !== 'corner'
                 ? pos.side === 'top'
-                  ? 'pt-[6px] sm:pt-[8.5px] pb-[1.5px] sm:pb-[2.5px] px-[1.5px] sm:px-[2.5px]'
+                  ? 'pt-[7px] sm:pt-[10px] pb-[1.5px] sm:pb-[2.5px] px-[1.5px] sm:px-[2.5px]'
                   : pos.side === 'bottom'
-                  ? 'pb-[6px] sm:pb-[8.5px] pt-[1.5px] sm:pt-[2.5px] px-[1.5px] sm:px-[2.5px]'
+                  ? 'pb-[7px] sm:pb-[10px] pt-[1.5px] sm:pt-[2.5px] px-[1.5px] sm:px-[2.5px]'
                   : pos.side === 'left'
-                  ? 'pl-[6px] sm:pl-[8.5px] pr-[1.5px] sm:pr-[2.5px] py-[1.5px] sm:py-[2.5px]'
-                  : 'pr-[6px] sm:pr-[8.5px] pl-[1.5px] sm:pl-[2.5px] py-[1.5px] sm:py-[2.5px]'
+                  ? 'pl-[7px] sm:pl-[10px] pr-[1.5px] sm:pr-[2.5px] py-[1.5px] sm:py-[2.5px]'
+                  : 'pr-[7px] sm:pr-[10px] pl-[1.5px] sm:pl-[2.5px] py-[1.5px] sm:py-[2.5px]'
                 : 'p-[1.5px] sm:p-[2.5px]';
+            const fullCellTitle = txt(def.name, def.cleanName, censored);
+            const tooltipTitle = group
+              ? `${fullCellTitle} (${txt(group.name, group.cleanName, censored)})${
+                  outerTabText ? ` · ${owner ? `Рента ${outerTabText}` : outerTabText}` : ''
+                }`
+              : fullCellTitle;
+            const hoverTipPosClass =
+              pos.side === 'top'
+                ? 'top-full mt-1.5 left-1/2 -translate-x-1/2'
+                : pos.side === 'bottom'
+                ? 'bottom-full mb-1.5 left-1/2 -translate-x-1/2'
+                : pos.side === 'left'
+                ? 'left-full ml-1.5 top-1/2 -translate-y-1/2'
+                : 'right-full mr-1.5 top-1/2 -translate-y-1/2';
 
             return (
               <div
                 key={def.id}
                 data-cell-id={def.id}
                 style={cellBgStyle}
-                onClick={() => handleCellClick(def.id)}
-                onMouseEnter={() => group && setHoveredGroupId(group.id)}
-                onMouseLeave={() => group && setHoveredGroupId((cur) => (cur === group.id ? null : cur))}
-                title={displayShortName}
+                onClick={() => {
+                  setHoveredCellId(null);
+                  handleCellClick(def.id);
+                }}
+                onMouseEnter={() => {
+                  setHoveredCellId(def.id);
+                  if (group) setHoveredGroupId(group.id);
+                }}
+                onMouseLeave={() => {
+                  setHoveredCellId((cur) => (cur === def.id ? null : cur));
+                  if (group) setHoveredGroupId((cur) => (cur === group.id ? null : cur));
+                }}
+                title={tooltipTitle}
                 className={`relative min-w-0 min-h-0 select-none cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-visible ${cornerRadiusClass} ${cellSurfaceBorderClass} ${
+                  hoveredCellId === def.id ? '!z-40' : ''
+                } ${
                   tradeDraft.open && !isTradableInDraft
                     ? 'opacity-30 brightness-75'
                     : activeTr && !isTradeGive && !isTradeReceive
@@ -802,6 +831,28 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     : 'hover:scale-[1.03] hover:-translate-y-0.5 hover:z-20 hover:shadow-[0_10px_22px_rgba(0,0,0,0.65)]'
                 }`}
               >
+                {/* Быстрая hover-подсказка полного названия и цены/ренты без клика */}
+                {!isPopoverOpen && hoveredCellId === def.id && pos.side !== 'corner' && (
+                  <div
+                    className={`pointer-events-none hidden sm:flex items-center gap-1.5 absolute ${hoverTipPosClass} z-[45] px-2.5 py-1 rounded-lg bg-[#090B11]/96 border border-[#E5B869]/55 shadow-[0_12px_28px_rgba(0,0,0,0.92)] text-[10.5px] font-bold text-[#F8FAFC] whitespace-nowrap`}
+                  >
+                    {group && (
+                      <span
+                        style={{
+                          backgroundColor: group.accentHex,
+                          boxShadow: `0 0 6px ${group.accentHex}`,
+                        }}
+                        className="w-2 h-2 rounded-full shrink-0"
+                      />
+                    )}
+                    <span>{fullCellTitle}</span>
+                    {outerTabText && (
+                      <span className="font-mono-num text-[#E5B869] pl-1 border-l border-white/15">
+                        {outerTabText}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {/* Яркая внутренняя подсветка монополии при наведении (отлично читается даже поверх чужой заливки владельца!) */}
                 {isHoveredGroup && group && (
                   <div
@@ -862,20 +913,20 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                     style={{
                       background:
                         pos.side === 'top' || pos.side === 'bottom'
-                          ? `linear-gradient(180deg, color-mix(in srgb, ${group.accentHex} 84%, #ffffff) 0%, ${group.accentHex} 52%, color-mix(in srgb, ${group.accentHex} 76%, #05070c) 100%)`
-                          : `linear-gradient(90deg, color-mix(in srgb, ${group.accentHex} 84%, #ffffff) 0%, ${group.accentHex} 52%, color-mix(in srgb, ${group.accentHex} 76%, #05070c) 100%)`,
+                          ? `linear-gradient(180deg, color-mix(in srgb, ${group.accentHex} 86%, #ffffff) 0%, ${group.accentHex} 52%, color-mix(in srgb, ${group.accentHex} 76%, #05070c) 100%)`
+                          : `linear-gradient(90deg, color-mix(in srgb, ${group.accentHex} 86%, #ffffff) 0%, ${group.accentHex} 52%, color-mix(in srgb, ${group.accentHex} 76%, #05070c) 100%)`,
                       boxShadow: isHoveredGroup
                         ? `0 0 14px ${group.accentHex}, inset 0 1px 0 rgba(255,255,255,0.75)`
-                        : `0 0 10px ${group.accentHex}99, inset 0 1px 0 rgba(255,255,255,0.48)`,
+                        : `0 0 11px ${group.accentHex}aa, inset 0 1px 0 rgba(255,255,255,0.52)`,
                     }}
                     className={`pointer-events-none absolute z-20 transition-all ${
                       pos.side === 'top'
-                        ? 'top-0 left-0 right-0 h-[5px] sm:h-[7px] rounded-t-[2.5px] sm:rounded-t-[3.5px] border-b border-[#06080D]/95'
+                        ? 'top-0 left-0 right-0 h-[6px] sm:h-[8.5px] rounded-t-[2.5px] sm:rounded-t-[3.5px] border-b border-[#06080D]/95'
                         : pos.side === 'bottom'
-                        ? 'bottom-0 left-0 right-0 h-[5px] sm:h-[7px] rounded-b-[2.5px] sm:rounded-b-[3.5px] border-t border-[#06080D]/95'
+                        ? 'bottom-0 left-0 right-0 h-[6px] sm:h-[8.5px] rounded-b-[2.5px] sm:rounded-b-[3.5px] border-t border-[#06080D]/95'
                         : pos.side === 'left'
-                        ? 'left-0 top-0 bottom-0 w-[5px] sm:w-[7px] rounded-l-[2.5px] sm:rounded-l-[3.5px] border-r border-[#06080D]/95'
-                        : 'right-0 top-0 bottom-0 w-[5px] sm:w-[7px] rounded-r-[2.5px] sm:rounded-r-[3.5px] border-l border-[#06080D]/95'
+                        ? 'left-0 top-0 bottom-0 w-[6px] sm:w-[8.5px] rounded-l-[2.5px] sm:rounded-l-[3.5px] border-r border-[#06080D]/95'
+                        : 'right-0 top-0 bottom-0 w-[6px] sm:w-[8.5px] rounded-r-[2.5px] sm:rounded-r-[3.5px] border-l border-[#06080D]/95'
                     }`}
                   />
                 )}
@@ -902,6 +953,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 )}
                 {/* Внешняя глянцевая LED-капсула цены (свободно) или ренты (куплено) */}
                 {buyable && group && outerTabText && (() => {
+                  const isUnowned = !owner && !rt?.isMortgaged;
                   const ledColor = rt?.isMortgaged
                     ? '#3f3f46'
                     : owner
@@ -920,11 +972,16 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                       style={{
                         background: rt?.isMortgaged
                           ? 'linear-gradient(180deg, #3f3f46 0%, #27272a 100%)'
+                          : isUnowned
+                          ? `linear-gradient(180deg, color-mix(in srgb, ${group.accentHex} 28%, #0E111A) 0%, #0B0D14 100%)`
                           : `linear-gradient(180deg, color-mix(in srgb, ${ledColor} 88%, #ffffff) 0%, color-mix(in srgb, ${ledColor} 76%, #07090e) 100%)`,
+                        borderColor: isUnowned ? `${group.accentHex}aa` : undefined,
                         boxShadow: isHoveredGroup
                           ? `0 0 0 1.5px ${group.accentHex}, 0 0 18px ${group.accentHex}, 0 4px 10px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.65)`
                           : rt?.isMortgaged
                           ? 'inset 0 1px 0 rgba(255,255,255,0.12), 0 2px 6px rgba(0,0,0,0.6)'
+                          : isUnowned
+                          ? `inset 0 1px 0 rgba(255,255,255,0.16), 0 2px 8px rgba(0,0,0,0.75)`
                           : `0 0 14px ${ledColor}55, 0 3px 8px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.42)`,
                         textShadow: '0 1px 2px rgba(0,0,0,0.92), 0 0 2px rgba(0,0,0,0.95)',
                       }}
@@ -932,7 +989,9 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                         isHoveredGroup ? 'scale-105 z-30' : ''
                       } ${
                         owner && !rt?.isMortgaged
-                          ? 'border border-white/65 ring-1 ring-black/40'
+                          ? 'border border-white/75 ring-1 ring-black/45'
+                          : isUnowned
+                          ? 'border'
                           : 'border border-white/25 opacity-95'
                       }`}
                     >
@@ -942,7 +1001,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                             backgroundColor: group.accentHex,
                             boxShadow: `0 0 6px ${group.accentHex}`,
                           }}
-                          className="hidden sm:inline-block w-2 h-2 rounded-[2.5px] border border-black/80 shrink-0"
+                          className="hidden sm:inline-block w-[4px] sm:w-[5px] h-2.5 sm:h-3 rounded-[2px] border border-black/80 shrink-0"
                         />
                       )}
                       {outerTabMobileText !== outerTabText ? (
@@ -960,15 +1019,15 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                 {/* Звёзды/шевроны филиалов (1..4 яркие ★ или золотая корона-звезда ★ за полную застройку) */}
                 {rt && rt.branches > 0 && (
                   <div
-                    className={`pointer-events-none absolute ${branchPosClass} flex items-center justify-center gap-[0.5px] sm:gap-[1px] px-[3px] sm:px-1 py-[0.5px] rounded-full bg-[#090B10]/90 border border-[#E5B869]/55 shadow-[0_2px_8px_rgba(0,0,0,0.9),0_0_10px_rgba(229,184,105,0.35)] z-30`}
+                    className={`pointer-events-none absolute ${branchPosClass} flex items-center justify-center gap-[1px] sm:gap-[1.5px] px-1 sm:px-1.5 py-[1px] rounded-full bg-[#090B10]/95 border border-[#F3D082]/85 shadow-[0_2px_10px_rgba(0,0,0,0.95),0_0_12px_rgba(243,208,130,0.5)] z-30`}
                   >
                     {rt.branches >= 5 ? (
                       <span
                         key={`${def.id}-star-5`}
                         style={{
-                          textShadow: '0 0 8px rgba(243,208,130,0.9), 0 1px 2px rgba(0,0,0,0.95)',
+                          textShadow: '0 0 8px rgba(253,230,138,0.95), 0 1px 2px rgba(0,0,0,0.95)',
                         }}
-                        className="text-[9px] sm:text-[14px] xl:text-[15.5px] leading-none text-[#F3D082] font-black animate-pop-in"
+                        className="text-[10px] sm:text-[15px] xl:text-[16px] leading-none text-[#FDE68A] font-black animate-pop-in"
                       >
                         ★
                       </span>
@@ -977,9 +1036,9 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                         <span
                           key={`${def.id}-star-${i}`}
                           style={{
-                            textShadow: '0 0 6px rgba(229,184,105,0.65), 0 1px 2px rgba(0,0,0,0.95)',
+                            textShadow: '0 0 6px rgba(253,230,138,0.8), 0 1px 2px rgba(0,0,0,0.95)',
                           }}
-                          className="text-[6.5px] sm:text-[10px] xl:text-[11.5px] leading-none text-[#E5B869] font-black animate-pop-in"
+                          className="text-[8px] sm:text-[12px] xl:text-[13px] leading-none text-[#FDE68A] font-black animate-pop-in"
                         >
                           ★
                         </span>
@@ -1140,20 +1199,43 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
               selectedDef.cleanDescription || selectedDef.cleanSubtitle,
               censored
             );
+            const ownerHasFullMonopoly = Boolean(
+              selectedDef.type === 'PROPERTY' &&
+                selectedDef.groupId &&
+                selectedOwner &&
+                ownsFullMonopoly(roomState.cells, selectedOwner.id, selectedDef.groupId)
+            );
+            const monopolyHasMortgaged = Boolean(
+              ownerHasFullMonopoly &&
+                selectedDef.groupId &&
+                getGroupCellDefs(selectedDef.groupId).some((c) => roomState.cells[c.id]?.isMortgaged)
+            );
+            const isDoubledBaseMonopolyRent =
+              ownerHasFullMonopoly && !monopolyHasMortgaged && (selectedRt?.branches ?? 0) === 0;
+
             const mechanicsHint =
               selectedDef.type === 'CAR'
                 ? 'Аренда растёт от количества авто в гараже.'
                 : selectedDef.type === 'IT_UTILITY'
                 ? 'Рента = сумма на кубиках × множитель.'
                 : selectedDef.type === 'PROPERTY'
-                ? 'Соберите всю группу, чтобы строить филиалы ★.'
+                ? ownerHasFullMonopoly && monopolyHasMortgaged
+                  ? 'Монополия собрана, но выкупите заложенные активы группы для ×2 ренты и стройки ★.'
+                  : ownerHasFullMonopoly
+                  ? 'Монополия собрана! Базовая рента ×2, открыта постройка филиалов ★.'
+                  : 'Соберите всю группу, чтобы удвоить ренту и строить филиалы ★.'
                 : null;
 
             const rents = selectedDef.rents ?? [];
             let activeRentIdx = -1;
             if (selectedOwner && !selectedRt?.isMortgaged) {
               if (selectedDef.type === 'PROPERTY') {
-                activeRentIdx = Math.min(5, Math.max(0, selectedRt?.branches ?? 0));
+                const br = Math.min(5, Math.max(0, selectedRt?.branches ?? 0));
+                if (br > 0) {
+                  activeRentIdx = br + 1;
+                } else {
+                  activeRentIdx = isDoubledBaseMonopolyRent ? 1 : 0;
+                }
               } else if (selectedDef.type === 'CAR' && selectedDef.groupId) {
                 const ownedCars = BOARD_CELLS.filter(
                   (c) =>
@@ -1175,13 +1257,14 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
             const carLabels = ['1 поле', '2 поля', '3 поля', '4 поля'];
             const itLabels = ['1 поле', '2 поля'];
-            const propLabels = [
-              'Базовая рента',
-              '1 филиал',
-              '2 филиала',
-              '3 филиала',
-              '4 филиала',
-              'Монополия ★',
+            const propRentRows = [
+              { label: 'Базовая рента', amount: rents[0] ?? 0, isTop: false },
+              { label: 'Монополия (×2)', amount: (rents[0] ?? 0) * 2, isTop: false },
+              { label: '1 филиал', amount: rents[1] ?? 0, isTop: false },
+              { label: '2 филиала', amount: rents[2] ?? 0, isTop: false },
+              { label: '3 филиала', amount: rents[3] ?? 0, isTop: false },
+              { label: '4 филиала', amount: rents[4] ?? 0, isTop: false },
+              { label: '5 филиалов ★', amount: rents[5] ?? 0, isTop: true },
             ];
 
             const isMine = selectedBuyable && selectedRt?.ownerId === myPlayerId;
@@ -1453,12 +1536,12 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
 
                   {selectedDef.type === 'PROPERTY' && (
                     <div className="rounded-xl bg-[#0B0D14]/80 border border-white/[0.05] px-2.5 py-1 divide-y divide-white/[0.04]">
-                      {propLabels.map((label, idx) => {
+                      {propRentRows.map((row, idx) => {
                         const active = activeRentIdx === idx;
-                        const isMonopolyRow = idx === 5;
+                        const isMonopolyRow = row.isTop;
                         return (
                           <div
-                            key={label}
+                            key={row.label}
                             className={`flex items-center justify-between gap-2 py-1 text-[11.5px] ${
                               active
                                 ? 'px-2 -mx-1 rounded-lg bg-[#10B981]/15 border border-[#10B981]/45 shadow-[0_0_16px_rgba(16,185,129,0.22)] text-[#6EE7B7] font-bold'
@@ -1473,7 +1556,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                               {active && (
                                 <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shadow-[0_0_6px_#10B981]" />
                               )}
-                              <span>{label}</span>
+                              <span>{row.label}</span>
                             </span>
                             <span
                               className={`font-mono-num font-bold ${
@@ -1485,7 +1568,7 @@ export const BoardGrid: React.FC<BoardGridProps> = (props) => {
                               }`}
                             >
                               <span className="opacity-55 mr-0.5">$</span>
-                              {formatDollar(rents[idx] ?? 0)}
+                              {formatDollar(row.amount)}
                             </span>
                           </div>
                         );

@@ -230,14 +230,16 @@ export const Modals: React.FC<ModalsProps> = ({
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setDismissedCardTs(popup.timestamp)}
-                    title="Закрыть плашку"
-                    className="w-7 h-7 rounded-full bg-white/[0.06] hover:bg-[#F43F5E]/25 border border-white/10 hover:border-[#F43F5E]/50 text-neutral-300 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer shrink-0 transition"
-                  >
-                    ✕
-                  </button>
+                  {!(roomState.phase === 'CHANCE' && isMyChance) && (
+                    <button
+                      type="button"
+                      onClick={() => setDismissedCardTs(popup.timestamp)}
+                      title="Закрыть плашку"
+                      className="w-7 h-7 rounded-full bg-white/[0.06] hover:bg-[#F43F5E]/25 border border-white/10 hover:border-[#F43F5E]/50 text-neutral-300 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer shrink-0 transition"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-neutral-200 bg-[#0B0D14]/85 border border-white/[0.08] rounded-xl px-2.5 py-1.5">
@@ -590,15 +592,16 @@ export const Modals: React.FC<ModalsProps> = ({
                   <div className="grid grid-cols-3 gap-2">
                     <div className="rounded-xl bg-[#10B981]/12 border border-[#10B981]/35 p-2.5 text-center">
                       <div className="text-[9.5px] text-emerald-200 uppercase font-bold">Лимит</div>
-                      <div className="text-sm font-mono-num font-extrabold text-[#6EE7B7] mt-0.5">+$5 000</div>
+                      <div className="text-sm font-mono-num font-extrabold text-[#6EE7B7] mt-0.5 whitespace-nowrap">+$5 000</div>
                     </div>
                     <div className="rounded-xl bg-[#0B0D14] border border-white/[0.08] p-2.5 text-center">
                       <div className="text-[9.5px] text-neutral-400 uppercase font-bold">Комиссия</div>
-                      <div className="text-sm font-mono-num font-extrabold text-[#E5B869] mt-0.5">+20% ($1 000)</div>
+                      <div className="text-sm font-mono-num font-extrabold text-[#E5B869] mt-0.5 whitespace-nowrap">+20%</div>
+                      <div className="text-[10px] font-mono-num font-bold text-[#E5B869]/80 whitespace-nowrap">($1 000)</div>
                     </div>
                     <div className="rounded-xl bg-[#F43F5E]/12 border border-[#F43F5E]/30 p-2.5 text-center">
                       <div className="text-[9.5px] text-rose-200 uppercase font-bold">К возврату</div>
-                      <div className="text-sm font-mono-num font-extrabold text-[#FDA4AF] mt-0.5">$6 000 · {defaultTerm}р</div>
+                      <div className="text-sm font-mono-num font-extrabold text-[#FDA4AF] mt-0.5 whitespace-nowrap">$6 000 · {defaultTerm}р</div>
                     </div>
                   </div>
 

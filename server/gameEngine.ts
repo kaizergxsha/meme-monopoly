@@ -1436,7 +1436,19 @@ export class GameManager {
     const cell = room.state.cells[cellId];
     const retro = room.state.settings.retroRules || room.state.settings.mode === 'retro';
 
-    if (def.type === 'START' || def.type === 'JAIL') {
+    if (def.type === 'START') {
+      this.finishPostRollOrAdvance(room);
+      return;
+    }
+
+    if (def.type === 'JAIL') {
+      this.addLog(
+        room,
+        'SYSTEM',
+        `👀 ${player.name} прошёл мимо КПП Учебки на экскурсии — пронесло!`,
+        `👀 ${player.name} на экскурсии у Учебки — пронесло!`,
+        player
+      );
       this.finishPostRollOrAdvance(room);
       return;
     }
@@ -1806,7 +1818,7 @@ export class GameManager {
     };
     room.state.phase = 'CHANCE';
     room.state.turnStartedAt = now;
-    room.state.turnDeadlineAt = now + walkDurationMs + 5500;
+    room.state.turnDeadlineAt = now + walkDurationMs + 14000;
   }
 
   public acknowledgeChance(room: ServerRoom, playerId?: string) {
@@ -1851,7 +1863,13 @@ export class GameManager {
           `${card.icon} Шанс: «${card.cleanTitle}» (-${formatMoney(amt)})`,
           player
         );
-        this.chargePlayer(room, player, 'BANK', amt, card.title, card.cleanTitle, true);
+        if (!(player.shields > 0 && amt <= 3000) && player.cash >= amt) {
+          player.cash -= amt;
+          this.recordTransfer(room, player.id, 'BANK', amt, player.position);
+          this.finishPostRollOrAdvance(room);
+        } else {
+          this.chargePlayer(room, player, 'BANK', amt, card.title, card.cleanTitle, true);
+        }
         break;
       }
       case 'BRANCH_TAX': {
@@ -1866,7 +1884,13 @@ export class GameManager {
           `${card.icon} Шанс: «${card.cleanTitle}» — начислено ${formatMoney(amt)}!`,
           player
         );
-        this.chargePlayer(room, player, 'BANK', amt, card.title, card.cleanTitle, true);
+        if (!(player.shields > 0 && amt <= 3000) && player.cash >= amt) {
+          player.cash -= amt;
+          this.recordTransfer(room, player.id, 'BANK', amt, player.position);
+          this.finishPostRollOrAdvance(room);
+        } else {
+          this.chargePlayer(room, player, 'BANK', amt, card.title, card.cleanTitle, true);
+        }
         break;
       }
       case 'SHIELD': {

@@ -217,7 +217,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
         />
       )}
 
-      <aside className="cockpit-sidebar-aside shrink-0 h-full flex flex-col select-none relative z-40">
+      <aside className="cockpit-sidebar-aside shrink-0 h-full min-h-0 overflow-y-auto chat-scrollbar flex flex-col select-none relative z-40">
         {/* Заголовок левого HUD резидентов */}
         <div className="px-1.5 flex items-center justify-between text-[10px] text-neutral-400 font-semibold shrink-0 uppercase tracking-[0.12em]">
           <span className="flex items-center gap-1.5 text-neutral-300">
@@ -243,6 +243,24 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                 key={p.id}
                 className={`relative ${isMenuOpen ? 'z-50' : 'z-10'}`}
               >
+                {/* Всплывающая дельта денег над правым верхним краем карточки (не перекрывает текст!) */}
+                {playerDeltas.length > 0 && (
+                  <div className="pointer-events-none absolute -top-2.5 right-2 z-40 flex items-center gap-1">
+                    {playerDeltas.map((d) => (
+                      <span
+                        key={d.id}
+                        className={`px-2 py-0.5 rounded-full font-mono-num text-[10.5px] font-extrabold shadow-lg border animate-cash-delta whitespace-nowrap ${
+                          d.delta > 0
+                            ? 'bg-[#10B981] border-[#6EE7B7]/75 text-white'
+                            : 'bg-[#F43F5E] border-rose-300/70 text-white'
+                        }`}
+                      >
+                        {d.delta > 0 ? `+${formatM1Cash(d.delta)}` : formatM1Cash(d.delta)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {/* Облачко мем-насмешки */}
                 {tauntDef && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap bg-gradient-to-r from-[#F3D082] to-[#C8963E] text-[#140F06] text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shadow-[0_8px_20px_rgba(229,184,105,0.45)] animate-bounce z-30 border border-[#FEF3C7]/70">
@@ -480,24 +498,6 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                       </div>
                     );
                   })()}
-
-                  {/* Всплывающая дельта денег строго внутри границ карточки */}
-                  {playerDeltas.map((d) => (
-                    <div
-                      key={d.id}
-                      className="pointer-events-none absolute inset-x-1.5 bottom-1.5 z-30 flex justify-end pr-2"
-                    >
-                      <span
-                        className={`px-2 py-0.5 rounded-full font-mono-num text-[11px] font-extrabold shadow-lg border animate-cash-delta ${
-                          d.delta > 0
-                            ? 'bg-[#10B981] border-[#6EE7B7]/60 text-white'
-                            : 'bg-[#F43F5E] border-rose-300/50 text-white'
-                        }`}
-                      >
-                        {d.delta > 0 ? `+${formatM1Cash(d.delta)}` : formatM1Cash(d.delta)}
-                      </span>
-                    </div>
-                  ))}
                 </div>
 
                 {/* Выпадающее контекстное меню при клике по игроку: локальная глубокая тень без мёртвого блюра поля */}
@@ -782,7 +782,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                   }`}
                 >
                   <div className="overflow-hidden min-h-0">
-                    <div className="sidebar-soundpad-grid grid grid-cols-2 gap-1 min-w-0 max-h-[210px] overflow-y-auto chat-scrollbar pr-0.5 pb-0.5">
+                    <div className="sidebar-soundpad-grid grid grid-cols-2 gap-1 min-w-0 max-h-[168px] overflow-y-auto chat-scrollbar pr-0.5 pb-1">
                       {TAUNTS.map((pad, idx) => {
                         const isPlaying = activeTauntPadId === pad.id;
                         const isOddLast = TAUNTS.length % 2 === 1 && idx === TAUNTS.length - 1;
@@ -798,7 +798,7 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                                 ? `Общий кулдаун: ${tauntCooldownLeft}с`
                                 : `${pad.label} (с озвучкой)`
                             }
-                            className={`streamdeck-pad w-full min-w-0 py-1.5 pl-2.5 pr-1.5 rounded-xl overflow-hidden disabled:opacity-40 text-left flex items-center justify-between gap-1 cursor-pointer ${
+                            className={`streamdeck-pad w-full min-w-0 py-1.5 pl-2 pr-1.5 rounded-xl overflow-hidden disabled:opacity-40 text-left flex items-center justify-between gap-1 cursor-pointer ${
                               isOddLast ? 'col-span-2' : ''
                             } ${
                               isPlaying ? 'animate-pad-playing !border-[#E5B869]/75' : ''
@@ -819,7 +819,9 @@ export const PlayersSidebar: React.FC<PlayersSidebarProps> = ({
                               <AppleEmoji emoji={pad.emoji} />
                               <span>{pad.label}</span>
                             </span>
-                            <SoundpadEqIcon playing={isPlaying} accentHex={pad.ledHex} />
+                            {isPlaying && (
+                              <SoundpadEqIcon playing={isPlaying} accentHex={pad.ledHex} />
+                            )}
                           </button>
                         );
                       })}

@@ -75,7 +75,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const [joinCode, setJoinCode] = useState('');
   const [joinPassword, setJoinPassword] = useState('');
   const [selectedCreateMode, setSelectedCreateMode] = useState<GameMode>('classic');
-  const [openModeInfo, setOpenModeInfo] = useState<GameMode | null>(null);
+  const [hoveredModeInfo, setHoveredModeInfo] = useState<GameMode | null>(null);
+  const [pinnedModeInfo, setPinnedModeInfo] = useState<GameMode | null>(null);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [customCashInput, setCustomCashInput] = useState('');
 
@@ -95,7 +96,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     activeClasses: string
   ) => {
     const info = MODE_INFO[m];
-    const isInfoOpen = openModeInfo === m;
+    const isInfoOpen = pinnedModeInfo === m || hoveredModeInfo === m;
 
     return (
       <div
@@ -148,11 +149,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           <button
             type="button"
             aria-label={`Описание режима ${info.title}`}
-            onMouseEnter={() => setOpenModeInfo(m)}
-            onMouseLeave={() => setOpenModeInfo((cur) => (cur === m ? null : cur))}
+            onMouseEnter={() => setHoveredModeInfo(m)}
+            onMouseLeave={() => setHoveredModeInfo((cur) => (cur === m ? null : cur))}
             onClick={(e) => {
               e.stopPropagation();
-              setOpenModeInfo((cur) => (cur === m ? null : m));
+              setPinnedModeInfo((cur) => {
+                const next = cur === m ? null : m;
+                if (!next) setHoveredModeInfo(null);
+                return next;
+              });
             }}
             className={`w-6 h-6 rounded-full border flex items-center justify-center font-mono-num text-[11px] font-black shrink-0 transition cursor-pointer ${
               isInfoOpen
@@ -185,7 +190,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
     return (
       <div
-        onClick={() => setOpenModeInfo(null)}
+        onClick={() => {
+          setPinnedModeInfo(null);
+          setHoveredModeInfo(null);
+        }}
         className="h-full w-full flex flex-col bg-[#08090C] p-3 md:p-5 overflow-y-auto relative"
       >
         <AmbientBackdrop />
@@ -546,13 +554,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   ))}
                 </div>
                 {isHost && (
-                  <div className="flex gap-1 mt-1.5">
+                  <div className="flex gap-1 mt-1.5 min-w-0">
                     <input
                       type="number"
-                      placeholder="Свой капитал (напр. 30000)"
+                      placeholder="Свой (напр. 30000)"
                       value={customCashInput}
                       onChange={(e) => setCustomCashInput(e.target.value)}
-                      className={`flex-1 px-2 py-1 text-xs font-mono-num ${GLASS_INPUT}`}
+                      className={`min-w-0 w-full flex-1 px-2 py-1 text-xs font-mono-num ${GLASS_INPUT}`}
                     />
                     <button
                       onClick={() => {
@@ -562,7 +570,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                           setCustomCashInput('');
                         }
                       }}
-                      className="px-2.5 py-1 rounded-lg bg-[#E5B869]/20 hover:bg-[#E5B869]/35 border border-[#E5B869]/45 text-[#F3D082] text-xs font-bold cursor-pointer"
+                      className="shrink-0 px-2.5 py-1 rounded-lg bg-[#E5B869]/20 hover:bg-[#E5B869]/35 border border-[#E5B869]/45 text-[#F3D082] text-xs font-bold cursor-pointer"
                     >
                       ОК
                     </button>
@@ -687,7 +695,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
   return (
     <div
-      onClick={() => setOpenModeInfo(null)}
+      onClick={() => {
+        setPinnedModeInfo(null);
+        setHoveredModeInfo(null);
+      }}
       className="h-full w-full flex flex-col bg-[#08090C] p-2.5 sm:p-4 lg:p-5 overflow-y-auto relative"
     >
       <AmbientBackdrop />

@@ -247,7 +247,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
     (!!roomState.lastDice &&
       roomState.phase !== 'CHOOSE_SPEED_TARGET' &&
       nowMs - roomState.lastDice.timestamp < walkMs &&
-      (roomState.phase !== 'PRE_ROLL' || roomState.lastDice.rolledBy === myPlayerId));
+      (roomState.phase !== 'PRE_ROLL' || roomState.lastDice.rolledBy === curPlayer?.id));
 
   const showAuctionCard =
     !tradeDraft.open &&
@@ -263,7 +263,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
     roomState.status === 'PLAYING' &&
     (roomState.phase === 'PRE_ROLL' ||
       roomState.phase === 'BUY_DECISION' ||
-      roomState.phase === 'CHANCE' ||
+      (roomState.phase === 'CHANCE' && !roomState.lastCardPopup) ||
       roomState.phase === 'PORTAL' ||
       roomState.phase === 'JACKPOT' ||
       roomState.phase === 'CHOOSE_SPEED_TARGET' ||
@@ -278,11 +278,17 @@ export const CenterStage: React.FC<CenterStageProps> = ({
 
   const expandCenterCard = isBlockingCenterCardOpen && (!isCockpit || isCompactHeight || tradeDraft.open);
 
-  // Крупные кубики всплывают по центру во время шагов фишки и скрываются сразу при открытии карточки выбора, чтобы не перекрывать кнопки
+  const isLastDiceFromCurrentPlayer =
+    !!roomState.lastDice && roomState.lastDice.rolledBy === curPlayer?.id;
+
+  // Крупные кубики всплывают по центру во время шагов фишки и скрываются сразу при открытии карточки выбора или смене активного хода
   const showCenterDice =
     !!roomState.lastDice &&
     !isBlockingCenterCardOpen &&
-    (isWalkingAfterRoll || nowMs - roomState.lastDice.timestamp < 1750);
+    (isWalkingAfterRoll ||
+      (isLastDiceFromCurrentPlayer &&
+        roomState.phase !== 'PRE_ROLL' &&
+        nowMs - roomState.lastDice.timestamp < 1750));
 
   return (
     <div
@@ -668,8 +674,9 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         ))}
                         <button
                           type="button"
+                          title="Сбросить сумму"
                           onClick={() => onChangeTradeDraft((p) => ({ ...p, offerCash: 0 }))}
-                          className="poker-chip-btn py-0.5 px-2 rounded-full font-mono-num text-[9.5px] font-bold text-neutral-300 hover:!border-[#F43F5E]/70 hover:text-rose-200 cursor-pointer"
+                          className="poker-chip-btn py-0.5 px-2.5 rounded-full font-mono-num text-[9.5px] font-bold text-neutral-300 hover:!border-[#F43F5E]/70 hover:text-rose-200 cursor-pointer"
                         >
                           0
                         </button>
@@ -841,7 +848,7 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                               ),
                             }))
                           }
-                          className="w-full bg-[#07090E] border border-white/12 focus:border-[#E5B869]/65 outline-none rounded-lg pl-5 pr-2 py-1 text-xs font-mono-num font-bold text-[#F8FAFC] text-right transition"
+                          className="w-full bg-[#07090E] border border-white/12 focus:border-[#E5B869]/65 outline-none rounded-lg pl-5 pr-2 py-1 text-xs font-mono-num font-bold text-[#F8FAFC] transition"
                         />
                       </div>
                       {/* Покерные фишки быстрых сумм партнёра */}
@@ -863,8 +870,9 @@ export const CenterStage: React.FC<CenterStageProps> = ({
                         ))}
                         <button
                           type="button"
+                          title="Сбросить сумму"
                           onClick={() => onChangeTradeDraft((p) => ({ ...p, reqCash: 0 }))}
-                          className="poker-chip-btn py-0.5 px-2 rounded-full font-mono-num text-[9.5px] font-bold text-neutral-300 hover:!border-[#F43F5E]/70 hover:text-rose-200 cursor-pointer"
+                          className="poker-chip-btn py-0.5 px-2.5 rounded-full font-mono-num text-[9.5px] font-bold text-neutral-300 hover:!border-[#F43F5E]/70 hover:text-rose-200 cursor-pointer"
                         >
                           0
                         </button>
@@ -1086,74 +1094,120 @@ export const CenterStage: React.FC<CenterStageProps> = ({
               </div>
             )}
 
-            {roomState.phase === 'BUY_DECISION' && (
-              <div className="space-y-1.5 sm:space-y-2">
-                <IndustryCardBanner
-                  groupId={BOARD_CELLS[curPlayer.position].groupId}
-                  cellType={BOARD_CELLS[curPlayer.position].type}
-                  cellId={curPlayer.position}
-                  censored={censored}
-                  className="!h-[64px] sm:!h-[86px]"
-                />
-                <div className="space-y-1">
-                  <div className="text-[11px] sm:text-xs text-neutral-300 leading-snug">
-                    Вы попали на{' '}
-                    <b className="text-[#F8FAFC] font-bold">
+            {roomState.phase === 'BUY_DECISION' && (() => {
+              const buyCell = BOARD_CELLS[curPlayer.position];
+              const buyRents = buyCell.rents ?? [];
+              const buyGroup = buyCell.groupId ? INDUSTRIES[buyCell.groupId] : null;
+              const buyBranchCost = buyCell.branchCost ?? buyGroup?.branchCost ?? 0;
+              return (
+                <div className="space-y-1.5 sm:space-y-2">
+                  <IndustryCardBanner
+                    groupId={buyCell.groupId}
+                    cellType={buyCell.type}
+                    cellId={curPlayer.position}
+                    censored={censored}
+                    cells={roomState.cells}
+                    highlightOwnerId={myPlayerId}
+                    className="!h-[64px] sm:!h-[86px]"
+                  />
+                  <div className="space-y-1">
+                    <div className="text-[11px] sm:text-xs text-neutral-300 leading-snug">
+                      Вы попали на{' '}
+                      <b className="text-[#F8FAFC] font-bold">
+                        «
+                        {txt(
+                          buyCell.name,
+                          buyCell.cleanName,
+                          censored
+                        )}
+                        »
+                      </b>
+                      <span className="hidden sm:inline text-neutral-400">
+                        {' '}— выкуп актива в портфель или открытые торги.
+                      </span>
+                    </div>
+                    <div className="relative overflow-hidden rounded-lg bg-[#0A0C12]/85 border border-white/[0.06] border-l-2 border-l-[#E5B869] px-2.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-[10.5px] text-neutral-300 italic leading-snug">
                       «
                       {txt(
-                        BOARD_CELLS[curPlayer.position].name,
-                        BOARD_CELLS[curPlayer.position].cleanName,
+                        buyCell.description || buyCell.subtitle,
+                        buyCell.cleanDescription || buyCell.cleanSubtitle,
                         censored
                       )}
                       »
-                    </b>
-                    <span className="hidden sm:inline text-neutral-400">
-                      {' '}— выкуп актива в портфель или открытые торги.
-                    </span>
-                  </div>
-                  <div className="relative overflow-hidden rounded-lg bg-[#0A0C12]/85 border border-white/[0.06] border-l-2 border-l-[#E5B869] px-2.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-[10.5px] text-neutral-300 italic leading-snug">
-                    «
-                    {txt(
-                      BOARD_CELLS[curPlayer.position].description ||
-                        BOARD_CELLS[curPlayer.position].subtitle,
-                      BOARD_CELLS[curPlayer.position].cleanDescription ||
-                        BOARD_CELLS[curPlayer.position].cleanSubtitle,
-                      censored
+                    </div>
+                    {buyRents.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 rounded-lg bg-[#0B0D14]/90 border border-white/[0.06] px-2.5 py-1 text-[10px] font-mono-num text-neutral-300">
+                        {buyCell.type === 'PROPERTY' && (
+                          <>
+                            <span>
+                              Рента <b className="text-[#F8FAFC]">{formatMoney(buyRents[0] ?? 0)}</b>
+                            </span>
+                            <span className="text-neutral-600">·</span>
+                            <span>
+                              Монополия ×2: <b className="text-[#6EE7B7]">{formatMoney((buyRents[0] ?? 0) * 2)}</b>
+                            </span>
+                            {buyBranchCost > 0 && (
+                              <>
+                                <span className="text-neutral-600">·</span>
+                                <span>
+                                  Филиал ★: <b className="text-[#E5B869]">{formatMoney(buyBranchCost)}</b>
+                                </span>
+                              </>
+                            )}
+                          </>
+                        )}
+                        {buyCell.type === 'CAR' && (
+                          <span>
+                            Рента:{' '}
+                            <b className="text-[#F8FAFC]">
+                              {formatMoney(buyRents[0] ?? 250)} → {formatMoney(buyRents[3] ?? 2000)}
+                            </b>{' '}
+                            <span className="text-neutral-400">(1–4 авто)</span>
+                          </span>
+                        )}
+                        {buyCell.type === 'IT_UTILITY' && (
+                          <span>
+                            Рента:{' '}
+                            <b className="text-[#F8FAFC]">
+                              🎲×{buyRents[0] ?? 100} (1) / 🎲×{buyRents[1] ?? 250} (2)
+                            </b>
+                          </span>
+                        )}
+                      </div>
                     )}
-                    »
                   </div>
-                </div>
-                <div className="show-in-cockpit-grid grid-cols-2 gap-1.5 sm:gap-2">
-                  <button
-                    disabled={(me?.cash ?? 0) < (BOARD_CELLS[curPlayer.position].price ?? 0)}
-                    onClick={onBuy}
-                    className="btn-emerald-3d active:translate-y-1 py-1.5 sm:py-2 px-2.5 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <DiceDualIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 hidden sm:block" />
-                    <span>
-                      Купить за{' '}
-                      <span className="font-mono-num font-extrabold">
-                        {formatMoney(BOARD_CELLS[curPlayer.position].price ?? 0)}
+                  <div className="show-in-cockpit-grid grid-cols-2 gap-1.5 sm:gap-2">
+                    <button
+                      disabled={(me?.cash ?? 0) < (buyCell.price ?? 0)}
+                      onClick={onBuy}
+                      className="btn-emerald-3d active:translate-y-1 py-1.5 sm:py-2 px-2.5 rounded-xl font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <DiceDualIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 hidden sm:block" />
+                      <span>
+                        Купить за{' '}
+                        <span className="font-mono-num font-extrabold">
+                          {formatMoney(buyCell.price ?? 0)}
+                        </span>
                       </span>
-                    </span>
-                  </button>
-                  <button
-                    onClick={onDeclineBuy}
-                    className="py-1.5 sm:py-2 rounded-xl bg-[#171B26] hover:bg-[#1F2433] border border-white/12 hover:border-[#E5B869]/45 text-neutral-200 hover:text-white font-bold text-[11px] sm:text-xs cursor-pointer shadow-[0_3px_0_#07080C] active:translate-y-0.5 transition"
-                  >
-                    {roomState.settings.auctionsEnabled && !roomState.settings.retroRules ? (
-                      <>
-                        <span className="hidden sm:inline">Выставить на </span>
-                        <span className="sm:hidden">На </span>
-                        аукцион
-                      </>
-                    ) : (
-                      'Пропустить'
-                    )}
-                  </button>
+                    </button>
+                    <button
+                      onClick={onDeclineBuy}
+                      className="py-1.5 sm:py-2 rounded-xl bg-[#171B26] hover:bg-[#1F2433] border border-white/12 hover:border-[#E5B869]/45 text-neutral-200 hover:text-white font-bold text-[11px] sm:text-xs cursor-pointer shadow-[0_3px_0_#07080C] active:translate-y-0.5 transition"
+                    >
+                      {roomState.settings.auctionsEnabled && !roomState.settings.retroRules ? (
+                        <>
+                          <span className="hidden sm:inline">Выставить на </span>
+                          <span className="sm:hidden">На </span>
+                          аукцион
+                        </>
+                      ) : (
+                        'Пропустить'
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {roomState.phase === 'CHANCE' && (
               <div className="space-y-1.5 sm:space-y-2">

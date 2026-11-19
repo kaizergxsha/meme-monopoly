@@ -1,4 +1,6 @@
 import React, { useId } from 'react';
+import { BOARD_CELLS } from '../../shared/boardData.ts';
+import { CellRuntimeState } from '../../shared/types.ts';
 import { CellArtwork } from './CellArtwork.tsx';
 import { AppleEmoji } from './AppleEmoji.tsx';
 
@@ -7,6 +9,8 @@ export interface IndustryCardBannerProps {
   cellType?: string;
   cellId?: number;
   censored?: boolean;
+  cells?: CellRuntimeState[];
+  highlightOwnerId?: string;
   className?: string;
 }
 
@@ -91,6 +95,8 @@ export const IndustryCardBanner: React.FC<IndustryCardBannerProps> = ({
   cellType,
   cellId = 0,
   censored = false,
+  cells,
+  highlightOwnerId,
   className = '',
 }) => {
   const uid = useId().replace(/:/g, '');
@@ -101,6 +107,11 @@ export const IndustryCardBanner: React.FC<IndustryCardBannerProps> = ({
     badge: cellType || 'СПЕЦКЛЕТКА',
     decor: ['🎲', '💰', '✨'],
   };
+  const groupCells = groupId ? BOARD_CELLS.filter((c) => c.groupId === groupId) : [];
+  const ownedByMe =
+    cells && highlightOwnerId
+      ? groupCells.filter((c) => cells[c.id]?.ownerId === highlightOwnerId).length
+      : 0;
 
   return (
     <div
@@ -159,18 +170,63 @@ export const IndustryCardBanner: React.FC<IndustryCardBannerProps> = ({
           <span className="whitespace-normal break-words text-[#F8FAFC]">{theme.badge}</span>
         </span>
         <div className="hidden sm:flex items-center gap-1.5">
-          {theme.decor.map((em, i) => (
-            <span
-              key={i}
-              style={{
-                borderColor: `${theme.accent}38`,
-                boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.06)',
-              }}
-              className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#0A0C12]/85 backdrop-blur-md border flex items-center justify-center text-xs sm:text-sm"
-            >
-              <AppleEmoji emoji={em} />
-            </span>
-          ))}
+          {groupCells.length > 0 ? (
+            <>
+              {groupCells.map((gc) => {
+                const isCurrent = gc.id === cellId;
+                const ownerId = cells?.[gc.id]?.ownerId ?? null;
+                const isMine = Boolean(highlightOwnerId && ownerId === highlightOwnerId);
+                const isOther = Boolean(ownerId && !isMine);
+                return (
+                  <span
+                    key={gc.id}
+                    title={gc.name}
+                    style={{
+                      borderColor: isMine
+                        ? '#10B981'
+                        : isCurrent
+                        ? '#E5B869'
+                        : `${theme.accent}38`,
+                      boxShadow: isMine
+                        ? '0 0 10px rgba(16,185,129,0.35), inset 0 2px 5px rgba(0,0,0,0.5)'
+                        : isCurrent
+                        ? '0 0 10px rgba(229,184,105,0.4), inset 0 2px 5px rgba(0,0,0,0.5)'
+                        : 'inset 0 2px 5px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.06)',
+                    }}
+                    className={`relative w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#0A0C12]/85 backdrop-blur-md border flex items-center justify-center text-xs sm:text-sm ${
+                      isOther ? 'opacity-50 grayscale-[30%]' : ''
+                    } ${isCurrent ? 'ring-1 ring-[#E5B869]/70' : ''}`}
+                  >
+                    <AppleEmoji emoji={gc.icon} />
+                    {isMine && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#10B981] border border-[#090B10] shadow-sm" />
+                    )}
+                    {isOther && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500/85 border border-[#090B10] shadow-sm" />
+                    )}
+                  </span>
+                );
+              })}
+              <span className="px-1.5 py-0.5 rounded-md bg-[#0A0C12]/85 border border-white/10 font-mono-num text-[9.5px] font-bold text-neutral-300 whitespace-nowrap">
+                {cells && highlightOwnerId
+                  ? `${ownedByMe}/${groupCells.length}`
+                  : `${groupCells.length} шт.`}
+              </span>
+            </>
+          ) : (
+            theme.decor.map((em, i) => (
+              <span
+                key={i}
+                style={{
+                  borderColor: `${theme.accent}38`,
+                  boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.06)',
+                }}
+                className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-[#0A0C12]/85 backdrop-blur-md border flex items-center justify-center text-xs sm:text-sm"
+              >
+                <AppleEmoji emoji={em} />
+              </span>
+            ))
+          )}
         </div>
       </div>
 
